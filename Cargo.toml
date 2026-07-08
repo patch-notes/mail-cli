@@ -1,0 +1,26 @@
+[package]
+name = "mail-cli"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+imap = { version = "3.0.0-alpha.15", default-features = false, features = ["rustls-tls"] }
+lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "pool", "rustls-tls", "hostname"] }
+mail-parser = "0.11"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+base64 = "0.22"
+mime_guess = "2"
+
+[dev-dependencies]
+# Integration tests seed GreenMail via IMAP APPEND with a controlled
+# INTERNALDATE (which SINCE/BEFORE/ON match). chrono provides that datetime;
+# same major version the `imap` crate uses.
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+imap = { version = "3.0.0-alpha.15", default-features = false }
+
+[profile.release]
+strip = true
+lto = true
