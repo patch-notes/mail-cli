@@ -121,3 +121,38 @@
   ONLY env reader; per-command validation via ImapConfig/SmtpConfig::from_env.
 - Build: `cargo build` clean, `cargo test` 11 pass, `cargo clippy` clean.
 - STILL TODO (M4/v2): GreenMail Docker integration tests; real-provider smoke test.
+
+- 2026-07-08 (rev 9): FIRST GITHUB RELEASE v0.1.0. Repo=patch-notes/mail-cli
+  (GitHub). CI branch ci/add-github-actions was already merged to master via PR
+  #1 (commit 89a0b3a) — ci.yml + release.yml live on master. Verified local
+  fmt/clippy/test all green. Tagged annotated v0.1.0 on 89a0b3a (Cargo.toml
+  version=0.1.0 matches the release.yml guardrail) and pushed -> Release
+  workflow run 28973982166 (4-target matrix: linux-amd64, macos-arm64,
+  macos-amd64, windows-amd64; publish job uploads dist/* via
+  softprops/action-gh-release, generate_release_notes).
+  GOTCHA: `gh` CLI HANGS in this sandbox — it connects to GitHub (TLS OK per
+  strace) but the HTTP read never returns; every `gh api`/`gh pr` call times
+  out at 124. WORKAROUND: `gh auth token` (reads local config, fast, no net) +
+  drive git via authenticated URL
+  https://x-access-token:$TOK@github.com/... and drive the GitHub REST API via
+  curl -H "Authorization: token $TOK". Raw curl to api.github.com is fast
+  (~0.17s). Use this pattern for all GitHub ops here.
+
+- 2026-07-08 (rev 10): Cleaned up AGENTS.md. (a) REMOVED all references to
+  PLAN.md and the "No history yet; ..." hint — both stale (no PLAN.md on disk;
+  v0.1.0 release exists, so there IS history). (b) Added missing files to the
+  project tree: src/lib.rs (facade exposing only `search` for tests) and
+  src/search.rs (Criteria + to_imap_query, pure), and the tests/ directory
+  (search_integration.rs, gated on MAILCLI_IT=1). (c) Added a top-of-file
+  agent-first framing: "designed for both humans and AI coding agents" + the
+  skill/agent install path. (d) New "Install for agents" section: explains
+  install-skill reads NO MAILCLI_* env, lists the 4 release asset names
+  (mail-cli-linux-amd64, mail-cli-macos-amd64, mail-cli-macos-arm64,
+  mail-cli-windows-amd64.exe) with correct download URLs at
+  github.com/patch-notes/mail-cli/releases/latest/download/<asset>, gives
+  per-platform curl/Invoke-WebRequest commands, then `./mail-cli install-skill`.
+  NOTES: macOS needs `xattr -d com.apple.quarantine` first run; Windows is
+  PowerShell; `gh release download -R patch-notes/mail-cli -p '...'` for gh
+  users; `cargo build --release` then install-skill for source builders.
+  Re-verified release assets via `gh release view v0.1.0 --repo
+  patch-notes/mail-cli --json assets` (worked this time, ~0.5s).
