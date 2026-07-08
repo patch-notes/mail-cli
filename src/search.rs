@@ -61,10 +61,16 @@ impl Criteria {
 
         // Dates (converted to IMAP's dd-Mon-yyyy at this boundary).
         if let Some(d) = &self.since {
-            terms.push(format!("SINCE {}", imap_date(d).map_err(rename("--since"))?));
+            terms.push(format!(
+                "SINCE {}",
+                imap_date(d).map_err(rename("--since"))?
+            ));
         }
         if let Some(d) = &self.before {
-            terms.push(format!("BEFORE {}", imap_date(d).map_err(rename("--before"))?));
+            terms.push(format!(
+                "BEFORE {}",
+                imap_date(d).map_err(rename("--before"))?
+            ));
         }
         if let Some(d) = &self.on {
             terms.push(format!("ON {}", imap_date(d).map_err(rename("--on"))?));
@@ -142,7 +148,10 @@ fn imap_date(iso: &str) -> Result<String> {
     if !(1..=days_in_month(year, month)).contains(&day) {
         bail!("day out of range in {iso:?}");
     }
-    Ok(format!("{day:02}-{}-{year:04}", MONTHS[(month - 1) as usize]))
+    Ok(format!(
+        "{day:02}-{}-{year:04}",
+        MONTHS[(month - 1) as usize]
+    ))
 }
 
 /// Days in a given month, honoring Gregorian leap years.
@@ -217,10 +226,7 @@ mod tests {
             body: Some(r#"say "hi"\bye"#.into()),
             ..Default::default()
         };
-        assert_eq!(
-            c.to_imap_query().unwrap(),
-            r#"BODY "say \"hi\"\\bye""#
-        );
+        assert_eq!(c.to_imap_query().unwrap(), r#"BODY "say \"hi\"\\bye""#);
     }
 
     #[test]

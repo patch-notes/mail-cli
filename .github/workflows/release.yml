@@ -1,0 +1,55 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write        # required to create the release + upload assets
+env:
+  CARGO_TERM_COLOR: always
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  target: x86_64-unknown-linux-gnu, suffix: linux-amd64 }
+          - { os: macos-latest,   target: aarch64-apple-darwin,     suffix: macos-arm64 }
+          - { os: macos-latest,   target: x86_64-apple-darwin,      suffix: macos-amd64 }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc,   suffix: windows-amd64, ext: ".exe" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Stage artifact
+        shell: bash
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          src="target/${{ matrix.target }}/release/mail-cli${{ matrix.ext }}"
+          dst="mail-cli-${v}-${{ matrix.suffix }}${{ matrix.ext }}"
+          mkdir -p dist && cp "$src" "dist/$dst"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.suffix }}
+          path: dist/*
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify tag matches Cargo.toml version
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          cargo_v=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          [ "$v" = "$cargo_v" ] || { echo "tag $v != Cargo.toml $cargo_v"; exit 1; }
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

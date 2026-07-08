@@ -55,7 +55,9 @@ fn parse(raw: &[u8]) -> Result<Message<'_>> {
 
 /// Join address-list headers into a display string like `Name <a@b>, c@d`.
 fn addrs(list: Option<&mail_parser::Address<'_>>) -> String {
-    let Some(addr) = list else { return String::new() };
+    let Some(addr) = list else {
+        return String::new();
+    };
     let mut out = Vec::new();
     for a in addr.iter() {
         let email = a.address().unwrap_or_default();
@@ -108,10 +110,7 @@ fn collect_attachments(msg: &Message<'_>) -> Vec<Attachment> {
             let bytes = part.contents().to_vec();
             Attachment {
                 index: i + 1,
-                filename: part
-                    .attachment_name()
-                    .unwrap_or("unnamed")
-                    .to_string(),
+                filename: part.attachment_name().unwrap_or("unnamed").to_string(),
                 mime: part
                     .content_type()
                     .map(|ct| match ct.subtype() {
