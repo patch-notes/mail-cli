@@ -79,6 +79,42 @@
   installed output is BYTE-IDENTICAL to the source skill. Updated README
   (install-skill section) + AGENTS.md (skill.rs + skill/ in project structure).
 
+- 2026-07-08 (rev 9): README refresh. Removed dead `PLAN.md` link (file no longer
+  exists) -> pointed design/rationale link at AGENTS.md instead. Verified README
+  usage still matches code: Command enum (Folders/List/Search/Read/Attachments/
+  Download/Send/InstallSkill) + all MAILCLI_* env vars in config.rs -> already
+  current, no drift. Added a "Quick install (for agents)" section with a
+  copy-paste one-line prompt (clone repo -> `cargo install --path .` ->
+  `mail-cli install-skill`). Repo origin = github.com/patch-notes/mail-cli.
+  Expanded Install block (cargo install vs build) and fixed License section
+  ("See repository" -> "MIT — see LICENSE"; LICENSE is MIT, (c) 2026 Exe Zulliger).
+  grep confirms no stale refs to plan.md/zoe-review/search-plan/model.rs remain.
+
+- 2026-07-08 (rev 10): Reworked README install to DOWNLOAD PREBUILT BINARIES from
+  the latest GitHub release instead of building from source. Latest release =
+  v0.1.0 (github-actions bot); 4 assets: mail-cli-0.1.0-{linux-amd64,macos-amd64,
+  macos-arm64,windows-amd64.exe}. Asset names are version-pinned, so the
+  version-agnostic trick = hit /releases/latest API and
+  `grep -o 'https://[^"]*linux-amd64'` -> resolves the browser_download_url
+  (verified: yields exactly the v0.1.0 linux-amd64 URL, one line). Agent one-liner
+  now tells the agent to fetch /releases/latest, pick the OS/arch asset, save as
+  `mail-cli` on PATH, chmod +x, run install-skill. cargo build/install demoted to
+  an optional "Build from source" subsection. GH releases created by CI
+  (PR #1 by @thepeak99: "Add GitHub Actions CI + release pipelines").
+
+- 2026-07-08 (rev 11): Added `install.sh` (repo root, POSIX sh, chmod +x,
+  `sh -n` clean) and swapped the README's ugly multi-line curl|grep|mv snippet
+  for a single `curl -fsSL .../master/install.sh | sh`. Script: detects OS
+  (Linux->linux, Darwin->macos) + arch (x86_64->amd64, arm64/aarch64->arm64),
+  guards linux=amd64-only, resolves the asset via /releases/latest API +
+  `grep -o "https://[^\"]*${suffix}\(\.exe\)\?" | head -n1` (verified on this box:
+  suffix=linux-amd64 -> correct v0.1.0 URL), downloads to mktemp w/ EXIT trap,
+  installs to BINDIR (default /usr/local/bin, sudo if needed, else falls back to
+  ~/.local/bin), warns if bindir not on PATH, then runs `install-skill` unless
+  INSTALL_SKILL=0. Raw URL uses master branch (release target_commitish=master).
+  Agent one-liner is now just the curl|sh command. Left AGENTS.md untouched (it
+  documents src/ internals, not top-level scripts).
+
 ## Semantic (facts learned)
 - Rust email crate landscape (mid-2026):
   - `imap` (jonhoo) = sync, simple, but stuck on 3.0.0-alpha, seeking maintainers.
