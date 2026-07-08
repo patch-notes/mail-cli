@@ -290,9 +290,7 @@ fn run() -> Result<()> {
             html,
             raw,
         } => cmd_read(cli.json, &folder, selector, html, raw),
-        Command::Attachments { folder, selector } => {
-            cmd_attachments(cli.json, &folder, selector)
-        }
+        Command::Attachments { folder, selector } => cmd_attachments(cli.json, &folder, selector),
         Command::Download {
             folder,
             selector,
@@ -329,7 +327,10 @@ fn resolve(
             let n = idx as usize;
             let uids = imap::newest_uids(session, folder, n, None)?;
             let uid = uids.get(n - 1).copied().ok_or_else(|| {
-                anyhow!("no message #{idx} in {folder} (only {} present)", uids.len())
+                anyhow!(
+                    "no message #{idx} in {folder} (only {} present)",
+                    uids.len()
+                )
             })?;
             Ok((uid, Some(n)))
         }
@@ -523,7 +524,10 @@ mod tests {
 
     #[test]
     fn selector_parses_index() {
-        assert!(matches!("3".parse::<Selector>().unwrap(), Selector::Index(3)));
+        assert!(matches!(
+            "3".parse::<Selector>().unwrap(),
+            Selector::Index(3)
+        ));
     }
 
     #[test]

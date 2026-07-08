@@ -89,7 +89,10 @@ pub fn attachments_human(uid: u32, index: Option<usize>, atts: &[Attachment]) {
         println!("(no attachments)");
         return;
     }
-    println!("{:>2}  {:<30}  {:<28}  {:>10}", "K", "FILENAME", "MIME", "SIZE");
+    println!(
+        "{:>2}  {:<30}  {:<28}  {:>10}",
+        "K", "FILENAME", "MIME", "SIZE"
+    );
     for a in atts {
         println!(
             "{:>2}  {:<30}  {:<28}  {:>10}",

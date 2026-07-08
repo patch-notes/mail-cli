@@ -23,7 +23,10 @@ const ASSETS: &[(&str, &str)] = &[
         "references/reference.md",
         include_str!("../skill/references/reference.md"),
     ),
-    ("evals/evals.json", include_str!("../skill/evals/evals.json")),
+    (
+        "evals/evals.json",
+        include_str!("../skill/evals/evals.json"),
+    ),
 ];
 
 /// The default install root: `~/.agents/skills/mail-cli`.
@@ -33,10 +36,7 @@ pub fn default_dir() -> Result<PathBuf> {
     let home = std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .context("cannot locate home directory: neither HOME nor USERPROFILE is set")?;
-    Ok(Path::new(&home)
-        .join(".agents")
-        .join("skills")
-        .join(NAME))
+    Ok(Path::new(&home).join(".agents").join("skills").join(NAME))
 }
 
 /// Write the bundled skill into `dir`, creating parent directories as needed.
@@ -52,7 +52,10 @@ pub fn install(dir: &Path, force: bool) -> Result<Vec<PathBuf>> {
             dest.push(part);
         }
         if dest.exists() && !force {
-            bail!("{} already exists; pass --force to overwrite", dest.display());
+            bail!(
+                "{} already exists; pass --force to overwrite",
+                dest.display()
+            );
         }
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent)

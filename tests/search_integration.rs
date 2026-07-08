@@ -70,9 +70,8 @@ fn seed(
     internal_date: DateTime<FixedOffset>,
     flags: &[Flag<'static>],
 ) {
-    let raw = format!(
-        "From: {from}\r\nTo: rcpt@example.com\r\nSubject: {subject}\r\n\r\n{body}\r\n"
-    );
+    let raw =
+        format!("From: {from}\r\nTo: rcpt@example.com\r\nSubject: {subject}\r\n\r\n{body}\r\n");
     let mut cmd = session.append("INBOX", raw.as_bytes());
     cmd.internal_date(internal_date);
     for f in flags {
@@ -124,9 +123,23 @@ fn from_and_subject_and_flags() {
     let mut s = session_for(&user);
 
     let d = dt("2026-03-10T12:00:00+00:00");
-    seed(&mut s, "alice@example.com", "Invoice #7", "body one", d, &[Flag::Seen]);
+    seed(
+        &mut s,
+        "alice@example.com",
+        "Invoice #7",
+        "body one",
+        d,
+        &[Flag::Seen],
+    );
     seed(&mut s, "bob@example.com", "Lunch plans", "body two", d, &[]);
-    seed(&mut s, "alice@example.com", "Weekly report", "body three", d, &[]);
+    seed(
+        &mut s,
+        "alice@example.com",
+        "Weekly report",
+        "body three",
+        d,
+        &[],
+    );
     let alice_seen = uid_of(&mut s, "Invoice #7");
     let bob_unseen = uid_of(&mut s, "Lunch plans");
     let alice_unseen = uid_of(&mut s, "Weekly report");
@@ -244,7 +257,10 @@ fn size_bounds() {
     };
     let got = search_uids(&mut s, &larger);
     assert!(got.contains(&big), "big message should match LARGER 2000");
-    assert!(!got.contains(&small), "small message should NOT match LARGER 2000");
+    assert!(
+        !got.contains(&small),
+        "small message should NOT match LARGER 2000"
+    );
 
     let _ = s.logout();
 }
