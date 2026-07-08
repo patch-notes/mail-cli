@@ -7,13 +7,42 @@ Configuration comes **entirely from environment variables**; everything else is
 a CLI flag. **No config file, no cache, no stored state of any kind.**
 Human-friendly by default, script-friendly with `--json`.
 
-See [`PLAN.md`](PLAN.md) for the full design and rationale.
+See [`AGENTS.md`](AGENTS.md) for the design rationale and contributor guide.
+
+## Quick install (for agents)
+
+Copy-paste this one-liner into your coding agent (or your own shell) to install
+the binary **and** the bundled skill:
+
+> Install mail-cli by running: `curl -fsSL https://raw.githubusercontent.com/patch-notes/mail-cli/master/install.sh | sh`
 
 ## Install
 
+One line — downloads the right prebuilt binary for your OS/arch from the
+[latest release](https://github.com/patch-notes/mail-cli/releases/latest) and
+installs the bundled agent skill:
+
 ```sh
-cargo build --release
-# binary at target/release/mail-cli
+curl -fsSL https://raw.githubusercontent.com/patch-notes/mail-cli/master/install.sh | sh
+```
+
+The script auto-detects your platform (`linux-amd64`, `macos-amd64`,
+`macos-arm64`), installs to `/usr/local/bin` (falling back to `~/.local/bin`),
+and runs `mail-cli install-skill`. Override the target with `BINDIR=...` or skip
+the skill with `INSTALL_SKILL=0`:
+
+```sh
+curl -fsSL .../install.sh | BINDIR="$HOME/.local/bin" INSTALL_SKILL=0 sh
+```
+
+On **Windows**, download `mail-cli-*-windows-amd64.exe` from the release page.
+
+### Build from source (optional)
+
+```sh
+cargo install --path .        # installs `mail-cli` into ~/.cargo/bin
+# or
+cargo build --release         # binary at target/release/mail-cli
 ```
 
 ## Configuration (environment only)
@@ -172,4 +201,4 @@ MAILCLI_IT=1 cargo test --test search_integration
 
 ## License
 
-See repository.
+MIT — see [`LICENSE`](LICENSE).
