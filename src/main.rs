@@ -7,6 +7,7 @@ mod config;
 mod imap;
 mod output;
 mod parse;
+mod skill;
 mod smtp;
 
 use mail_cli::search;
@@ -178,6 +179,20 @@ enum Command {
         #[arg(long)]
         attach: Vec<PathBuf>,
     },
+
+    /// Install the bundled agent skill (SKILL.md + references + evals).
+    ///
+    /// The skill is compiled into the binary; this writes it to disk. Purely
+    /// local — no MAILCLI_* env vars are read. Defaults to
+    /// `~/.agents/skills/mail-cli`.
+    InstallSkill {
+        /// Install directory (the skill root). Default: ~/.agents/skills/mail-cli.
+        #[arg(long)]
+        dir: Option<PathBuf>,
+        /// Overwrite existing files instead of refusing.
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 /// A stateless message reference: a live index or a stable UID.
@@ -295,6 +310,7 @@ fn run() -> Result<()> {
             html,
             attach,
         } => cmd_send(to, cc, bcc, subject, body, body_file, html, attach),
+        Command::InstallSkill { dir, force } => cmd_install_skill(dir, force),
     }
 }
 
@@ -467,6 +483,20 @@ fn cmd_send(
     let email = smtp::build(&cfg, &outgoing)?;
     smtp::send(&cfg, &email)?;
     println!("message sent");
+    Ok(())
+}
+
+/// Install the bundled agent skill to disk. Local-only; reads no env.
+fn cmd_install_skill(dir: Option<PathBuf>, force: bool) -> Result<()> {
+    let dest = match dir {
+        Some(d) => d,
+        None => skill::default_dir()?,
+    };
+    let written = skill::install(&dest, force)?;
+    println!("installed skill '{}' to {}", skill::NAME, dest.display());
+    for path in &written {
+        println!("  {}", path.display());
+    }
     Ok(())
 }
 

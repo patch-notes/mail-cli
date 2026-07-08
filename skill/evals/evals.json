@@ -1,0 +1,35 @@
+{
+  "skill_name": "mail-cli",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I've got mail-cli built at ./target/release/mail-cli and my Gmail creds exported as MAILCLI_* env vars. Can you find the most recent unread email from anyone at stripe.com and show me what it says?",
+      "expected_output": "Uses `mail-cli --json search --from stripe.com --unseen` (or list --search), reads .[0].uid with jq, then `mail-cli read INBOX uid:<UID>`. --json placed before the subcommand. Addresses the message by uid:, not by row number.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Send an email from the terminal to jane@acme.com and cc my boss bob@acme.com. Subject 'Q3 numbers', and attach the file ./reports/q3.pdf. The body should just say 'Here are the Q3 figures, let me know if anything looks off.'",
+      "expected_output": "Runs `mail-cli send --to jane@acme.com --cc bob@acme.com --subject 'Q3 numbers' --body '...' --attach ./reports/q3.pdf`. Knows send needs SMTP env vars; comma/flag usage correct; does not invent a config file.",
+      "files": ["reports/q3.pdf"]
+    },
+    {
+      "id": 3,
+      "prompt": "Search my INBOX with mail-cli for messages with 'invoice' in the subject sent since 2026-01-01, and download all attachments from the newest one into ./invoices.",
+      "expected_output": "Uses `mail-cli --json search --subject invoice --since 2026-01-01`, extracts .[0].uid, then `mail-cli download INBOX uid:<UID> --all --out ./invoices`. Uses typed search flags, AND semantics, stable uid.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "mail-cli keeps erroring with 'required environment variable MAILCLI_PASSWORD is not set' when I run `mail-cli list`. Where's its config file so I can fix the login?",
+      "expected_output": "Explains there is NO config file — mail-cli is stateless and env-only. Tells the user to export MAILCLI_PASSWORD (app password for Gmail) and the other needed MAILCLI_* vars. Does not hunt for or fabricate a config path.",
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "Write me a little shell script that prints how many unread emails I currently have in my inbox using mail-cli.",
+      "expected_output": "Produces `mail-cli --json search --unseen | jq 'length'` (or list-based equivalent). --json before subcommand; parses JSON rather than scraping the human table.",
+      "files": []
+    }
+  ]
+}

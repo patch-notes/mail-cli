@@ -54,19 +54,30 @@
 
 - 2026-07-08 (rev 7): Created a USAGE skill for the mail-cli binary via the
   skill-creator skill. Location: /home/exe/.agents/skills/mail-cli/ with
-  SKILL.md (pushy trigger desc + lean workflow), references/reference.md (JSON
-  schemas matching Summary/Rendered/Attachment structs, auth/TLS, Gmail/O365
-  setup, error strings, scripting recipes, design invariants), and
-  evals/evals.json (5 realistic prompts). Key facts encoded: (a) --json is a
-  GLOBAL flag and MUST precede the subcommand (clap rejects it after); (b)
-  stateless => address messages by uid:NNN not row N in scripts; (c) env-only
-  config, no config file — when MAILCLI_PASSWORD missing, fix env not a file;
-  (d) search is server-side substring, AND-only, errors on empty criteria,
-  --raw escape hatch conflicts with structured flags. Left the eval/benchmark
-  loop + description optimization as offered next steps (headless env: no
-  browser viewer). CORRECTION during authoring: --json is `global = true` in
-  clap, so it works AFTER the subcommand too — fixed an initial false "clap
-  rejects it" claim; skill now says before-placement is merely canonical.
+  SKILL.md, references/reference.md, evals/evals.json. Key facts encoded:
+  (a) --json is a GLOBAL clap flag (works either side of subcommand;
+  before-placement canonical); (b) stateless => address by uid:NNN not row N;
+  (c) env-only config, no config file; (d) search is server-side substring,
+  AND-only, errors on empty criteria, --raw conflicts w/ structured flags.
+
+- 2026-07-08 (rev 8): BUNDLED the skill INTO the binary + added an
+  `install-skill` subcommand. Copied the shipped skill verbatim into repo
+  `skill/` (SKILL.md + references/reference.md + evals/evals.json). New pure
+  module src/skill.rs: embeds the 3 assets via `include_str!("../skill/...")`
+  (path is relative to the SOURCE FILE, so `../skill` from src/), exposes
+  `NAME`, `ASSETS: &[(relpath, contents)]`, `default_dir()` (=
+  $HOME/.agents/skills/mail-cli, falls back to USERPROFILE for Windows), and
+  `install(dir, force)`. install() rejoins '/'-separated relpaths per-component
+  for portability, create_dir_all parents, refuses to clobber existing files
+  unless --force (fails loud naming the path). Wired `Command::InstallSkill {
+  dir: Option<PathBuf>, force: bool }` in main.rs (clap derives kebab
+  `install-skill`) + `cmd_install_skill`. It reads NO env — purely local,
+  consistent w/ stateless design. 4 new unit tests (embed non-empty, frontmatter
+  name, install writes all 3, refuse-without-force then force-ok). 19 lib + 15
+  bin unit + 3 integration all pass; clippy clean. Verified real binary:
+  --help, default+--dir, overwrite-refusal, --force, and `diff -rq` shows
+  installed output is BYTE-IDENTICAL to the source skill. Updated README
+  (install-skill section) + AGENTS.md (skill.rs + skill/ in project structure).
 
 ## Semantic (facts learned)
 - Rust email crate landscape (mid-2026):

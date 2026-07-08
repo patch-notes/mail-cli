@@ -14,7 +14,12 @@ src/
   imap.rs    // the ONLY place that talks IMAP (connect/auth/list/fetch)
   parse.rs   // mail-parser wrappers; Summary/Rendered/Attachment structs
   smtp.rs    // lettre message build (+attachments) and send
+  skill.rs   // embeds skill/ assets; install-skill writes them to disk
   output.rs  // human tables + --json serialization
+
+skill/       // the bundled agent skill (SKILL.md + references/ + evals/),
+             // embedded into the binary via include_str! and materialized by
+             // `mail-cli install-skill`. Keep in sync with the shipped skill.
 ```
 
 Structs live with the module that owns them (no `model.rs`). Keep IMAP calls

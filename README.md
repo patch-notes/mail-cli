@@ -114,6 +114,17 @@ echo "hi" | mail-cli send --to a@x.com --subject S --body-file -
 mail-cli send --to a@x.com --subject S --html --body '<p>Hi</p>'
 ```
 
+### install-skill
+Install the agent usage skill that ships **inside the binary** — no repo clone
+needed. It writes `SKILL.md` plus its `references/` and `evals/` to disk.
+Purely local: no `MAILCLI_*` env vars are read.
+```sh
+mail-cli install-skill                       # -> ~/.agents/skills/mail-cli
+mail-cli install-skill --dir ./my-skills/mc  # custom location
+mail-cli install-skill --force               # overwrite an existing install
+```
+Without `--force` it refuses to clobber existing files, naming the offender.
+
 ## JSON output
 
 Add `--json` to any read command (`folders`, `list`, `read`, `attachments`) for
