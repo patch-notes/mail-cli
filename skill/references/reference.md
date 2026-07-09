@@ -6,6 +6,7 @@ lives in `SKILL.md`.
 
 ## Table of contents
 - [JSON output schemas](#json-output-schemas)
+- [Accounts (multi-account)](#accounts-multi-account)
 - [Selectors: `N` vs `uid:NNN`](#selectors-n-vs-uidnnn)
 - [Authentication](#authentication)
 - [TLS modes](#tls-modes)
@@ -67,6 +68,49 @@ writes untouched RFC822 **bytes to stdout** and ignores `--json`.
 ```
 - `index` is the 1-based `K` used by `download --attachment K`.
 - Raw bytes are never included in JSON (only written to disk by `download`).
+
+### `accounts` — array of AccountInfo
+```json
+[
+  {
+    "name": "default",
+    "email": "me@work.com",
+    "imap_host": "imap.work.com",
+    "smtp_host": "smtp.work.com",
+    "has_password": true
+  }
+]
+```
+- `name` is `"default"` for the bare vars, else the suffix (`"1"`, `"work"`).
+- `email`/`imap_host`/`smtp_host` are `null` when that var is unset.
+- `has_password` is a **boolean presence flag** — the password value is never
+  emitted. Accounts sort `default` first, then numeric ascending, then lexical.
+
+## Accounts (multi-account)
+
+Configure several accounts by suffixing their `MAILCLI_*` vars (`_1`, `_2`, …)
+and select one per run with the global `--account` flag.
+
+- **Selector precedence:** `--account <TOKEN>` > `MAILCLI_ACCOUNT` env > none.
+- **No selector → the `default` account** = the bare, un-suffixed vars. This is
+  exactly the pre-multi-account behavior; existing setups are unaffected.
+- The token is **numeric by convention** but any non-empty string works
+  (`--account work` → `MAILCLI_*_work`). An empty/whitespace token is rejected:
+  `account selector is empty; …`.
+- **Strict, no fallback.** Account N is read *only* from `*_N` names; there is no
+  inheritance from the bare vars. A missing value fails naming the resolved var,
+  e.g. `required environment variable MAILCLI_PASSWORD_2 is not set`. Because the
+  optional vars still default (`993`/`465`/`implicit`/`login`, `USER = EMAIL`),
+  an account only needs `MAILCLI_IMAP_HOST_N`, `MAILCLI_EMAIL_N`,
+  `MAILCLI_PASSWORD_N` (plus `MAILCLI_SMTP_HOST_N` for `send`).
+- `mail-cli accounts` lists what's configured without opening a connection and
+  without printing any password. Use it to choose the right `--account`.
+
+```sh
+# discover, then act on a specific account
+mail-cli --json accounts | jq -r '.[] | select(.name=="1") | .email'
+mail-cli --account 1 list
+```
 
 ## Selectors: `N` vs `uid:NNN`
 
@@ -144,8 +188,10 @@ export MAILCLI_SMTP_PORT=587
 The binary fails loud and exits non-zero, printing `error: …`:
 
 - **Missing env var** → names the exact variable, e.g.
-  `required environment variable MAILCLI_PASSWORD is not set`. Fix the env; do
-  not look for a config file.
+  `required environment variable MAILCLI_PASSWORD is not set` (with `--account 2`
+  it names `MAILCLI_PASSWORD_2`). Fix the env; do not look for a config file.
+- **Empty `--account` / `MAILCLI_ACCOUNT`** → `account selector is empty; …`
+  (drop it for the default account, or pass a non-empty token).
 - **Bad `MAILCLI_TLS` / `MAILCLI_AUTH`** → states the allowed values.
 - **Empty `search` criteria** → refuses rather than matching everything.
 - **`download` without `--attachment`/`--all`** → `specify --attachment K or --all`.
@@ -177,8 +223,9 @@ mail-cli --json read INBOX "uid:$uid" | jq -r '.body' \
 
 These are deliberate; work with them rather than around them:
 
-- **Stateless.** No cache, no last-list memory, no `--account`/profiles. Account
-  switching = environment switching.
+- **Stateless.** No cache, no last-list memory, no config file or on-disk
+  profiles. Multiple accounts are just env vars with a numeric suffix, chosen at
+  runtime via `--account`; there is still nothing stored between runs.
 - **Env is the only config boundary.** If something feels like it should be a
   flag but isn't, check whether it's a `MAILCLI_*` var before assuming it's
   missing.

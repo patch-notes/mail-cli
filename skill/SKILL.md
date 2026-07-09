@@ -37,12 +37,36 @@ given command needs are required; a missing one fails loud, naming the variable.
 | `MAILCLI_PASSWORD` | yes | — | Password / app-password / (with `xoauth2`) an OAuth access token |
 | `MAILCLI_TLS` | no | `implicit` | `implicit` (TLS on connect) or `starttls` |
 | `MAILCLI_AUTH` | no | `login` | `login` (PLAIN/LOGIN) or `xoauth2` (token passthrough) |
+| `MAILCLI_ACCOUNT` | no | — | Default account selector when `--account` is omitted |
 
 Switch accounts by switching environment (shell export, `direnv`, a wrapper
-script). There are no profiles. **Never persist or log the password.**
+script), **or** configure several at once with a numeric suffix and pick one per
+run — see [Multiple accounts](#multiple-accounts). **Never persist or log the
+password.**
 
 For provider-specific setup (Gmail app passwords, Outlook, XOAUTH2 tokens),
 read `references/reference.md`.
+
+## Multiple accounts
+
+Several accounts can be configured at once by giving each a **suffix** on its
+`MAILCLI_*` vars (`_1`, `_2`, … — numeric by convention, any non-empty token
+works), then selecting one per invocation with the global `--account` flag:
+
+```sh
+mail-cli list                 # default account = the bare MAILCLI_* vars
+mail-cli --account 1 list     # reads MAILCLI_*_1
+mail-cli --account 1 send --to a@b.com --subject Hi --body yo
+```
+
+Rules an agent must respect:
+- **No `--account` → the default account** = the bare, un-suffixed vars.
+- Precedence: `--account <TOKEN>` **>** `MAILCLI_ACCOUNT` env **>** none.
+- **Strict, no fallback:** account N is read *only* from `*_N` names. A missing
+  value fails naming the exact var (`… MAILCLI_PASSWORD_2 is not set`) — set that
+  suffixed var; do not fall back to the bare one.
+- Run `mail-cli accounts` to see which accounts are configured (it never prints
+  passwords). Use it to pick the right `--account` before acting.
 
 ## `--json`: a global flag — canonical placement is before the subcommand
 
@@ -54,11 +78,21 @@ mail-cli list --limit 5 --json        # also works (it's a global flag)
 `--json` is declared global, so clap accepts it on either side of the
 subcommand. Prefer putting it **before** the subcommand — that's the form shown
 throughout the docs and it reads unambiguously. It applies to the read commands
-(`folders`, `list`, `search`, `read`, `attachments`) and prints
+(`accounts`, `folders`, `list`, `search`, `read`, `attachments`) and prints
 machine-readable output. Always use it when you're going to parse the result
 (e.g. piping to `jq`) rather than scraping the human table.
 
 ## Commands
+
+### accounts — list configured accounts
+```sh
+mail-cli accounts            # human table: ACCOUNT STATUS EMAIL IMAP/SMTP host
+mail-cli --json accounts     # {name, email, imap_host, smtp_host, has_password}
+```
+Discovers accounts from the environment (`default` = bare vars, then suffixed
+sets). Reports `ok`/`incomplete` and **never prints passwords** — only
+`has_password`. Reads env but opens no connection. Use it to decide which
+`--account` to pass.
 
 ### folders — list mailboxes
 ```sh

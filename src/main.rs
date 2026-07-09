@@ -31,12 +31,26 @@ struct Cli {
     #[arg(long, global = true)]
     json: bool,
 
+    /// Select a configured account: read `MAILCLI_*_<ACCOUNT>` instead of the
+    /// bare `MAILCLI_*` names. Numeric by convention (1, 2, …), but any
+    /// non-empty token works. Overrides `MAILCLI_ACCOUNT`. Omit for the default
+    /// (bare-var) account.
+    #[arg(long, global = true)]
+    account: Option<String>,
+
     #[command(subcommand)]
     command: Command,
 }
 
 #[derive(Subcommand)]
 enum Command {
+    /// List configured accounts discovered from the environment.
+    ///
+    /// Scans `MAILCLI_*` (bare = the `default` account) and `MAILCLI_*_<N>`
+    /// suffixed sets, reporting which look complete. Never prints passwords —
+    /// only whether one is set. Reads env but opens no connection.
+    Accounts,
+
     /// List mailboxes (folders) for the account.
     Folders,
 
@@ -231,13 +245,23 @@ fn main() {
 
 fn run() -> Result<()> {
     let cli = Cli::parse();
+
+    // Resolve the active account once: --account flag > MAILCLI_ACCOUNT env >
+    // none (the default, bare-var account). Build the env boundary from it.
+    let account = cli
+        .account
+        .clone()
+        .or_else(|| std::env::var("MAILCLI_ACCOUNT").ok());
+    let env = config::Env::new(account)?;
+
     match cli.command {
-        Command::Folders => cmd_folders(cli.json),
+        Command::Accounts => cmd_accounts(cli.json),
+        Command::Folders => cmd_folders(&env, cli.json),
         Command::List {
             folder,
             limit,
             search,
-        } => cmd_list(cli.json, &folder, limit, search.as_deref()),
+        } => cmd_list(&env, cli.json, &folder, limit, search.as_deref()),
         Command::Search {
             folder,
             limit,
@@ -282,22 +306,24 @@ fn run() -> Result<()> {
                 };
                 criteria.to_imap_query()?
             };
-            cmd_list(cli.json, &folder, limit, Some(&query))
+            cmd_list(&env, cli.json, &folder, limit, Some(&query))
         }
         Command::Read {
             folder,
             selector,
             html,
             raw,
-        } => cmd_read(cli.json, &folder, selector, html, raw),
-        Command::Attachments { folder, selector } => cmd_attachments(cli.json, &folder, selector),
+        } => cmd_read(&env, cli.json, &folder, selector, html, raw),
+        Command::Attachments { folder, selector } => {
+            cmd_attachments(&env, cli.json, &folder, selector)
+        }
         Command::Download {
             folder,
             selector,
             attachment,
             all,
             out,
-        } => cmd_download(&folder, selector, attachment, all, &out),
+        } => cmd_download(&env, &folder, selector, attachment, all, &out),
         Command::Send {
             to,
             cc,
@@ -307,7 +333,7 @@ fn run() -> Result<()> {
             body_file,
             html,
             attach,
-        } => cmd_send(to, cc, bcc, subject, body, body_file, html, attach),
+        } => cmd_send(&env, to, cc, bcc, subject, body, body_file, html, attach),
         Command::InstallSkill { dir, force } => cmd_install_skill(dir, force),
     }
 }
@@ -339,8 +365,20 @@ fn resolve(
 
 // ---------- commands ----------
 
-fn cmd_folders(json: bool) -> Result<()> {
-    let cfg = ImapConfig::from_env()?;
+/// List configured accounts discovered from the environment. Reads env but
+/// opens no connection, and never prints passwords.
+fn cmd_accounts(json: bool) -> Result<()> {
+    let accounts = config::scan_accounts();
+    if json {
+        output::json(&accounts)
+    } else {
+        output::accounts_human(&accounts);
+        Ok(())
+    }
+}
+
+fn cmd_folders(env: &config::Env, json: bool) -> Result<()> {
+    let cfg = ImapConfig::from_env(env)?;
     let mut session = imap::connect(&cfg)?;
     let folders = imap::list_folders(&mut session)?;
     let _ = session.logout();
@@ -352,8 +390,14 @@ fn cmd_folders(json: bool) -> Result<()> {
     }
 }
 
-fn cmd_list(json: bool, folder: &str, limit: usize, search: Option<&str>) -> Result<()> {
-    let cfg = ImapConfig::from_env()?;
+fn cmd_list(
+    env: &config::Env,
+    json: bool,
+    folder: &str,
+    limit: usize,
+    search: Option<&str>,
+) -> Result<()> {
+    let cfg = ImapConfig::from_env(env)?;
     let mut session = imap::connect(&cfg)?;
     let uids = imap::newest_uids(&mut session, folder, limit, search)?;
     let summaries = imap::fetch_summaries(&mut session, folder, &uids)?;
@@ -366,8 +410,15 @@ fn cmd_list(json: bool, folder: &str, limit: usize, search: Option<&str>) -> Res
     }
 }
 
-fn cmd_read(json: bool, folder: &str, selector: Selector, html: bool, raw: bool) -> Result<()> {
-    let cfg = ImapConfig::from_env()?;
+fn cmd_read(
+    env: &config::Env,
+    json: bool,
+    folder: &str,
+    selector: Selector,
+    html: bool,
+    raw: bool,
+) -> Result<()> {
+    let cfg = ImapConfig::from_env(env)?;
     let mut session = imap::connect(&cfg)?;
     let (uid, index) = resolve(&mut session, folder, selector)?;
     let bytes = imap::fetch_raw(&mut session, folder, uid)?;
@@ -390,8 +441,8 @@ fn cmd_read(json: bool, folder: &str, selector: Selector, html: bool, raw: bool)
     }
 }
 
-fn cmd_attachments(json: bool, folder: &str, selector: Selector) -> Result<()> {
-    let cfg = ImapConfig::from_env()?;
+fn cmd_attachments(env: &config::Env, json: bool, folder: &str, selector: Selector) -> Result<()> {
+    let cfg = ImapConfig::from_env(env)?;
     let mut session = imap::connect(&cfg)?;
     let (uid, index) = resolve(&mut session, folder, selector)?;
     let bytes = imap::fetch_raw(&mut session, folder, uid)?;
@@ -407,6 +458,7 @@ fn cmd_attachments(json: bool, folder: &str, selector: Selector) -> Result<()> {
 }
 
 fn cmd_download(
+    env: &config::Env,
     folder: &str,
     selector: Selector,
     attachment: Option<usize>,
@@ -416,7 +468,7 @@ fn cmd_download(
     if attachment.is_none() && !all {
         bail!("specify --attachment K or --all");
     }
-    let cfg = ImapConfig::from_env()?;
+    let cfg = ImapConfig::from_env(env)?;
     let mut session = imap::connect(&cfg)?;
     let (uid, index) = resolve(&mut session, folder, selector)?;
     let bytes = imap::fetch_raw(&mut session, folder, uid)?;
@@ -458,6 +510,7 @@ fn cmd_download(
 
 #[allow(clippy::too_many_arguments)]
 fn cmd_send(
+    env: &config::Env,
     to: Vec<String>,
     cc: Vec<String>,
     bcc: Vec<String>,
@@ -471,7 +524,7 @@ fn cmd_send(
         bail!("at least one --to recipient is required");
     }
     let body = resolve_body(body, body_file)?;
-    let cfg = SmtpConfig::from_env()?;
+    let cfg = SmtpConfig::from_env(env)?;
     let outgoing = smtp::Outgoing {
         to,
         cc,

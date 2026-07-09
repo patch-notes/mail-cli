@@ -30,6 +30,18 @@
       "prompt": "Write me a little shell script that prints how many unread emails I currently have in my inbox using mail-cli.",
       "expected_output": "Produces `mail-cli --json search --unseen | jq 'length'` (or list-based equivalent). --json before subcommand; parses JSON rather than scraping the human table.",
       "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "I have two mailboxes set up in mail-cli: my work account under the plain MAILCLI_* vars, and my personal Gmail under MAILCLI_*_1. List the newest 10 messages from my personal Gmail, not my work one.",
+      "expected_output": "Runs `mail-cli --account 1 list --limit 10` (the --account global flag selects the *_1 suffixed vars). Understands that omitting --account would hit the default/work account, and that account 1 is read strictly from MAILCLI_*_1. Does not try to swap env vars or invent a config file/profile.",
+      "files": []
+    },
+    {
+      "id": 7,
+      "prompt": "How do I see which email accounts I've configured for mail-cli, and check that account 2 is fully set up? I don't want to accidentally print my passwords.",
+      "expected_output": "Runs `mail-cli accounts` (optionally `--json`) to list configured accounts and their ok/incomplete status. Notes it never prints passwords (only has_password / a presence flag), reports whether account 2 shows as complete, and opens no connection. Does not cat env or echo MAILCLI_PASSWORD*.",
+      "files": []
     }
   ]
 }
