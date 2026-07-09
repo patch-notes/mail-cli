@@ -115,6 +115,66 @@
   Agent one-liner is now just the curl|sh command. Left AGENTS.md untouched (it
   documents src/ internals, not top-level scripts).
 
+- 2026-07-09 (rev 12): PLANNED multi-account support (env-var suffixes _1/_2/…).
+  Wrote ACCOUNTS-PLAN.md (plan only, not implemented). Design: an account = the
+  set of MAILCLI_* vars sharing a numeric suffix. Selector resolution =
+  `--account <TOK>` global flag > MAILCLI_ACCOUNT env > none(=bare vars=today's
+  DEFAULT account, zero breakage). Token is numeric by convention but any
+  non-empty string works (one code path; `--account work`→*_work free superset);
+  empty token rejected loud. FALLBACK = STRICT/no inheritance (v1): acct N reads
+  ONLY *_N; missing→error naming the real var e.g. MAILCLI_PASSWORD_2. OK because
+  optional vars already default (993/465/implicit/login, USER=EMAIL) so an acct
+  only MUST set IMAP_HOST/EMAIL/PASSWORD (+SMTP_HOST for send). Layered
+  inheritance deferred behind opt-in MAILCLI_ACCOUNT_INHERIT (v2, non-goal).
+  IMPL confined to config.rs+main.rs: introduce `Env{suffix:Option<String>}` with
+  var(base)/opt/required/port/tls_mode/auth_method/login_user methods; from_env
+  takes &Env. main.rs adds global `--account` flag, resolves once, threads &Env
+  into cmd_* (install-skill untouched—reads no env). config.rs STAYS the ONLY env
+  boundary (confirmed via grep: skill.rs only reads HOME/USERPROFILE). Tests:
+  pure Env::var/new cases; optional injected lookup fn for from_env DI (avoids
+  env-race mutex). Optional `accounts` subcommand (milestone B) lists configured
+  suffixes WITHOUT printing PASSWORD. Milestones A(core)/B(discovery)/C(docs+
+  SKILL sync+eval — skill/ must stay byte-identical, per rev 8). TENSION noted:
+  rev 2 dropped --account/profiles; this env-only suffix form stays inside the
+  env-only+stateless constraints (no file/cache), so it supersedes that line ONLY
+  for this form — user must confirm.
+
+- 2026-07-09 (rev 13): IMPLEMENTED multi-account (ACCOUNTS-PLAN.md, all 3
+  milestones A/B/C). User confirmed: ship `accounts` cmd; no --account = default
+  (bare vars). config.rs: replaced free opt/required/port/tls_mode/auth_method/
+  login_user fns with methods on new pub `Env{suffix:Option<String>, lookup:
+  fn(&str)->Option<String>}`; var(base) appends `_<suffix>`; Env::new(None)=
+  default, Some(empty/ws)=loud error, Some(tok)=suffix. ImapConfig/SmtpConfig::
+  from_env now take &Env. Added pub `scan_accounts()` + pure `scan_accounts_from(
+  Vec<(String,String)>)` + `AccountInfo{name,email,imap_host,smtp_host,
+  has_password}` (serde::Serialize, NO password value ever) + account_sort_key
+  (default<numeric<lexical). main.rs: global `--account:Option<String>` flag
+  (next to --json); run() resolves account = flag > MAILCLI_ACCOUNT env > None,
+  builds Env once, threads &env into cmd_folders/list/read/attachments/download/
+  send; install-skill untouched. New `Accounts` subcommand → cmd_accounts(json)
+  → output::accounts_human (STATUS ok/incomplete, never prints pw) or --json.
+  output.rs imports crate::config::AccountInfo. 11 new config tests (var
+  resolution, empty-token reject, suffixed-error naming via injected `|_|None`
+  lookup, scanner: default+numeric, incomplete-no-leak, sort order, empty-value
+  skip). 45 tests total pass (16 lib+26 bin+3 integ), clippy clean (used
+  let-chains to collapse if, sort_by_key, inlined literal), fmt clean. Smoke
+  verified real binary: accounts table+json (no pw leak), empty --account
+  rejected, MAILCLI_PASSWORD_2 / MAILCLI_IMAP_HOST_3 named on miss, MAILCLI_
+  ACCOUNT env selects, --help shows global --account. Docs: README (config table
+  +MAILCLI_ACCOUNT row, new "Multiple accounts" section, accounts subcommand,
+  usage synopsis `[--account N]`), AGENTS.md (config.rs desc + Security rule
+  "accounts env-suffixed, selection is a CLI flag"). SKILL synced: SKILL.md
+  (+MAILCLI_ACCOUNT, Multiple accounts section, accounts cmd), references/
+  reference.md (AccountInfo JSON schema, Accounts section, error cases, fixed
+  stale "no --account/profiles" invariant), evals.json (+eval 6 --account
+  select, +eval 7 accounts discovery/no-leak). VERIFIED `install-skill --force`
+  output is byte-identical to skill/ via diff -rq. Design decisions: STRICT
+  no-fallback (acct N only reads *_N); numeric convention but any non-empty token
+  = one code path; default account = bare vars = zero breakage. TENSION w/ rev-2
+  "dropped --account/profiles" resolved: this env-only suffix form stays inside
+  env-only+stateless, so it supersedes that line for THIS form only (user
+  confirmed).
+
 ## Semantic (facts learned)
 - Rust email crate landscape (mid-2026):
   - `imap` (jonhoo) = sync, simple, but stuck on 3.0.0-alpha, seeking maintainers.

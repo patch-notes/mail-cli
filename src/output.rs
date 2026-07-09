@@ -3,6 +3,7 @@
 use anyhow::Result;
 use serde::Serialize;
 
+use crate::config::AccountInfo;
 use crate::imap::Folder;
 use crate::parse::{Attachment, Rendered, Summary};
 
@@ -100,6 +101,34 @@ pub fn attachments_human(uid: u32, index: Option<usize>, atts: &[Attachment]) {
             clip(&a.filename, 30),
             clip(&a.mime, 28),
             human_size(a.size),
+        );
+    }
+}
+
+/// Render the configured-accounts listing (`accounts`). Never prints secrets.
+pub fn accounts_human(accounts: &[AccountInfo]) {
+    if accounts.is_empty() {
+        println!("(no accounts configured — set MAILCLI_* env vars)");
+        return;
+    }
+    println!(
+        "{:<10}  {:<12}  {:<28}  {:<28}  SMTP HOST",
+        "ACCOUNT", "STATUS", "EMAIL", "IMAP HOST"
+    );
+    for a in accounts {
+        // "complete" = enough to read (imap host + email + password present).
+        let status = if a.imap_host.is_some() && a.email.is_some() && a.has_password {
+            "ok"
+        } else {
+            "incomplete"
+        };
+        println!(
+            "{:<10}  {:<12}  {:<28}  {:<28}  {}",
+            clip(&a.name, 10),
+            status,
+            clip(a.email.as_deref().unwrap_or("-"), 28),
+            clip(a.imap_host.as_deref().unwrap_or("-"), 28),
+            clip(a.smtp_host.as_deref().unwrap_or("-"), 28),
         );
     }
 }

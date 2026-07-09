@@ -10,7 +10,8 @@ before non-trivial work — it is the locked source of truth.
 ```
 src/
   main.rs    // clap surface, Selector enum, live selector resolution, dispatch
-  config.rs  // the ONLY boundary that reads env; per-command validation
+  config.rs  // the ONLY boundary that reads env; per-command validation;
+             //   Env account-suffix resolver + accounts scan
   imap.rs    // the ONLY place that talks IMAP (connect/auth/list/fetch)
   parse.rs   // mail-parser wrappers; Summary/Rendered/Attachment structs
   smtp.rs    // lettre message build (+attachments) and send
@@ -20,6 +21,10 @@ src/
 skill/       // the bundled agent skill (SKILL.md + references/ + evals/),
              // embedded into the binary via include_str! and materialized by
              // `mail-cli install-skill`. Keep in sync with the shipped skill.
+
+plans/       // local, git-ignored working design docs (e.g. ACCOUNTS-PLAN.md).
+             // The directory stays in the repo via its tracked .gitignore; its
+             // contents are NOT committed. Write plans here, not at root.
 ```
 
 Structs live with the module that owns them (no `model.rs`). Keep IMAP calls
@@ -60,3 +65,10 @@ inside `imap.rs` so a future async swap stays contained.
 - Secrets come only from `MAILCLI_PASSWORD` (env). Never persist, prompt, or log
   credentials. Guard the stateless line — persistence must be explicit and
   opt-in, never an implementation detail.
+- **Accounts are env-suffixed, selection is a CLI flag.** Config *values* stay
+  env-only; the runtime *choice* of which account to use is `--account <TOKEN>`
+  (global) with `MAILCLI_ACCOUNT` as the default. No `--account` → the bare
+  `MAILCLI_*` vars (the `default` account). An account is read strictly from its
+  own `*_<TOKEN>` names — no fallback to the bare vars. All suffix resolution
+  lives in `config.rs::Env`; `main.rs` only parses the flag and passes `&Env`
+  in. `mail-cli accounts` scans the env and must never print password values.

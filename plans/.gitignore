@@ -1,0 +1,4 @@
+# Plans are local working docs — ignore everything here except this
+# .gitignore, so the directory stays in the repo but its contents don't.
+*
+!.gitignore

@@ -58,15 +58,66 @@ cargo build --release         # binary at target/release/mail-cli
 | `MAILCLI_PASSWORD` | yes | — | Password / app-password / (with `MAILCLI_AUTH=xoauth2`) an OAuth access token. |
 | `MAILCLI_TLS` | no | `implicit` | `implicit` (TLS on connect) or `starttls`. |
 | `MAILCLI_AUTH` | no | `login` | `login` (PLAIN/LOGIN) or `xoauth2` (token passthrough). |
+| `MAILCLI_ACCOUNT` | no | — | Default account selector when `--account` is omitted (see [Multiple accounts](#multiple-accounts)). |
 
 Only the variables a given command needs are required. Switch accounts by
-switching environment (shell, `direnv`, a wrapper script) — there are no
-profiles.
+switching environment (shell, `direnv`, a wrapper script), or configure several
+at once with a numeric suffix and pick one per invocation — see
+[Multiple accounts](#multiple-accounts).
+
+## Multiple accounts
+
+Configure several accounts at once by giving each a **numeric suffix** on its
+`MAILCLI_*` vars (`_1`, `_2`, …), then pick one per run with `--account`:
+
+```sh
+# default account = the bare vars (works exactly as before)
+export MAILCLI_IMAP_HOST=imap.work.com
+export MAILCLI_EMAIL=me@work.com
+export MAILCLI_PASSWORD=…
+
+# account 1
+export MAILCLI_IMAP_HOST_1=imap.gmail.com
+export MAILCLI_EMAIL_1=me@gmail.com
+export MAILCLI_PASSWORD_1=…
+
+mail-cli list                 # default account
+mail-cli --account 1 list     # account 1
+mail-cli --account 1 send --to a@b.com --subject Hi --body yo
+```
+
+Rules:
+- **No `--account` → the default account** = the bare, un-suffixed vars. Existing
+  setups are unaffected.
+- Selector precedence: `--account <TOKEN>` **>** `MAILCLI_ACCOUNT` env **>** none.
+- The token is **numeric by convention** but may be any non-empty string, so
+  `--account work` reads `MAILCLI_*_work`. An empty token is rejected loudly.
+- **Strict, no fallback.** Account N is read *only* from `*_N` names — there is no
+  inheritance from the bare vars. A missing value fails naming the exact var
+  (e.g. `required environment variable MAILCLI_PASSWORD_2 is not set`). Because
+  the optional vars already default (`993`/`465`/`implicit`/`login`,
+  `USER = EMAIL`), an account only needs `MAILCLI_IMAP_HOST_N`,
+  `MAILCLI_EMAIL_N`, `MAILCLI_PASSWORD_N` (plus `MAILCLI_SMTP_HOST_N` for
+  `send`).
+
+Use `mail-cli accounts` to see what is configured.
 
 ## Usage
 
 ```
-mail-cli [--json] <SUBCOMMAND>
+mail-cli [--json] [--account N] <SUBCOMMAND>
+```
+
+### accounts
+List configured accounts discovered from the environment. Reports which look
+complete; **never prints passwords** (only whether one is set). Reads env but
+opens no connection.
+```sh
+mail-cli accounts
+# ACCOUNT     STATUS        EMAIL              IMAP HOST          SMTP HOST
+# default     ok            me@work.com        imap.work.com      smtp.work.com
+# 1           ok            me@gmail.com       imap.gmail.com     -
+# 2           incomplete    me@example.com     imap.example.com   -
 ```
 
 ### folders
@@ -156,8 +207,8 @@ Without `--force` it refuses to clobber existing files, naming the offender.
 
 ## JSON output
 
-Add `--json` to any read command (`folders`, `list`, `read`, `attachments`) for
-machine-readable output:
+Add `--json` to any read command (`accounts`, `folders`, `list`, `read`,
+`attachments`) for machine-readable output:
 ```sh
 mail-cli --json list --limit 5 | jq '.[].uid'
 ```
