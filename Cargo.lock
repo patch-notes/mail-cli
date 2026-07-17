@@ -537,6 +537,7 @@ dependencies = [
  "chrono",
  "clap",
  "imap",
+ "imap-proto",
  "lettre",
  "mail-parser",
  "mime_guess",

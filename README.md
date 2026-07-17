@@ -58,6 +58,8 @@ cargo build --release         # binary at target/release/mail-cli
 | `MAILCLI_PASSWORD` | yes | — | Password / app-password / (with `MAILCLI_AUTH=xoauth2`) an OAuth access token. |
 | `MAILCLI_TLS` | no | `implicit` | `implicit` (TLS on connect) or `starttls`. |
 | `MAILCLI_AUTH` | no | `login` | `login` (PLAIN/LOGIN) or `xoauth2` (token passthrough). |
+| `MAILCLI_SENT_FOLDER` | no | auto → `Sent` | Folder to save sent mail into. If unset, `send` auto-discovers the server's `\Sent` special-use mailbox, else falls back to `Sent`. |
+| `MAILCLI_SAVE_SENT` | no | `1` | Whether `send` files a copy in the Sent folder (`0/false/no/off` to disable). Requires IMAP config. |
 | `MAILCLI_ACCOUNT` | no | — | Default account selector when `--account` is omitted (see [Multiple accounts](#multiple-accounts)). |
 
 Only the variables a given command needs are required. Switch accounts by
@@ -192,7 +194,22 @@ echo "hi" | mail-cli send --to a@x.com --subject S --body-file -
 
 # HTML body
 mail-cli send --to a@x.com --subject S --html --body '<p>Hi</p>'
+
+# Sent copy: by default `send` files a copy in the Sent folder over IMAP.
+mail-cli send --to a@x.com --subject S --body hi --sent-folder "Sent Items"
+mail-cli send --to a@x.com --subject S --body hi --no-save-sent
 ```
+
+**Saving to Sent.** SMTP delivery does not put a copy in your Sent mailbox —
+that lives on the IMAP side. After a successful send, `mail-cli` files an
+identical copy into your Sent folder (flagged read) via IMAP `APPEND`. The
+folder is resolved as `--sent-folder` > `MAILCLI_SENT_FOLDER` > the server's
+`\Sent` special-use mailbox (auto-discovered) > the literal `Sent`.
+
+This is **best-effort**: the message is already delivered, so a failed copy only
+prints a `warning:` and still exits `0` (a non-zero exit would invite a retry
+that double-sends). Disable it with `--no-save-sent` or `MAILCLI_SAVE_SENT=0`.
+If IMAP isn't configured, saving is skipped with a one-line `note:`.
 
 ### install-skill
 Install the agent usage skill that ships **inside the binary** — no repo clone
@@ -238,7 +255,8 @@ cargo test
 ```
 The `search` query builder and parsing/selector logic are fully covered here.
 
-Integration tests exercise `search` against a real IMAP server
+Integration tests exercise `search` and the save-to-Sent `APPEND`/discovery
+paths against a real IMAP server
 ([GreenMail](https://greenmail-mail-test.github.io/greenmail/)). They are
 **gated on `MAILCLI_IT=1`** so a plain `cargo test` never needs a server:
 ```sh
@@ -247,6 +265,7 @@ podman run -d --name greenmail-mailcli -p 3025:3025 -p 3143:3143 \
   docker.io/greenmail/standalone:2.1.0
 
 MAILCLI_IT=1 cargo test --test search_integration
+MAILCLI_IT=1 cargo test --test sent_integration
 ```
 (`docker` works too if you prefer it to `podman`.)
 

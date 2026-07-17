@@ -4,6 +4,30 @@ All notable changes to `mail-cli` are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`send` saves a copy to the Sent folder.** Previously a sent message was
+  delivered over SMTP but never filed in Sent (SMTP delivery does not touch the
+  IMAP Sent mailbox). Now, after a successful send, `mail-cli` files an identical
+  copy into the Sent folder over IMAP (flagged `\Seen`). The folder is resolved
+  as `--sent-folder` > `MAILCLI_SENT_FOLDER` > the server's `\Sent` special-use
+  mailbox (auto-discovered, RFC 6154) > the literal `Sent`.
+- New `--sent-folder <NAME>` / `--no-save-sent` flags on `send`, and
+  `MAILCLI_SENT_FOLDER` / `MAILCLI_SAVE_SENT` env vars (per-account, suffixable).
+- Integration tests (`tests/sent_integration.rs`, gated on `MAILCLI_IT=1`)
+  covering the `APPEND`-to-Sent and `\Sent` discovery paths against GreenMail.
+
+### Behavior
+
+- Saving to Sent is **best-effort and default-on**: a failed copy prints a
+  `warning:` and still exits `0` (the mail already went out; a non-zero exit
+  would invite a retry that double-sends). If IMAP is not configured, saving is
+  skipped with a one-line `note:` rather than failing the send. Because the
+  default degrades to a skip when IMAP is absent, existing send-only setups keep
+  working — this is a minor, additive change.
+
 ## [0.2.0] - 2026-07-09
 
 ### Added

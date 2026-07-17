@@ -154,6 +154,33 @@ impl Env {
             None => self.required("MAILCLI_EMAIL"),
         }
     }
+
+    /// The configured Sent-folder name from `MAILCLI_SENT_FOLDER[_N]`, or `None`
+    /// if unset. This is only the *configured* value; the caller (`main.rs`)
+    /// owns the precedence chain: `--sent-folder` > this > `\Sent` special-use
+    /// discovery > the literal `"Sent"` default.
+    pub fn sent_folder(&self) -> Option<String> {
+        self.opt("MAILCLI_SENT_FOLDER")
+    }
+
+    /// Whether to save a copy of sent mail to the Sent folder. Default **on**;
+    /// `MAILCLI_SAVE_SENT[_N]` set to a falsey value (`0/false/no/off`) turns it
+    /// off. Any other value is rejected loud, naming the resolved var.
+    pub fn save_sent(&self) -> Result<bool> {
+        match self.opt("MAILCLI_SAVE_SENT") {
+            None => Ok(true),
+            Some(v) => match v.trim().to_ascii_lowercase().as_str() {
+                "1" | "true" | "yes" | "on" => Ok(true),
+                "0" | "false" | "no" | "off" => Ok(false),
+                other => {
+                    let name = self.var("MAILCLI_SAVE_SENT");
+                    bail!(
+                        "{name} must be a boolean (1/0, true/false, yes/no, on/off), got {other:?}"
+                    )
+                }
+            },
+        }
+    }
 }
 
 impl ImapConfig {
@@ -403,5 +430,85 @@ mod tests {
     fn scan_ignores_empty_values() {
         let infos = scan_accounts_from(owned(&[("MAILCLI_EMAIL_3", "   ")]));
         assert!(infos.is_empty());
+    }
+
+    // ---- save-to-Sent config (SAVE-TO-SENT-PLAN §3.1/§3.2) ----
+
+    #[test]
+    fn sent_folder_none_when_unset() {
+        // No MAILCLI_SENT_FOLDER set → None (main.rs supplies the "Sent" default).
+        let env = Env {
+            suffix: None,
+            lookup: |_| None,
+        };
+        assert_eq!(env.sent_folder(), None);
+    }
+
+    #[test]
+    fn sent_folder_reads_env_override() {
+        let env = Env {
+            suffix: None,
+            lookup: |name| (name == "MAILCLI_SENT_FOLDER").then(|| "Sent Items".to_string()),
+        };
+        assert_eq!(env.sent_folder().as_deref(), Some("Sent Items"));
+    }
+
+    #[test]
+    fn sent_folder_is_account_suffixed() {
+        let env = Env {
+            suffix: Some("2".to_string()),
+            lookup: |name| (name == "MAILCLI_SENT_FOLDER_2").then(|| "INBOX.Sent".to_string()),
+        };
+        assert_eq!(env.sent_folder().as_deref(), Some("INBOX.Sent"));
+    }
+
+    #[test]
+    fn save_sent_defaults_on() {
+        let env = Env {
+            suffix: None,
+            lookup: |_| None,
+        };
+        assert!(env.save_sent().unwrap());
+    }
+
+    #[test]
+    fn save_sent_off_when_env_is_zero_or_false() {
+        for val in ["0", "false", "no", "off"] {
+            let env = Env {
+                suffix: None,
+                // leak a &'static str per iteration is fine for a test.
+                lookup: match val {
+                    "0" => |name: &str| (name == "MAILCLI_SAVE_SENT").then(|| "0".to_string()),
+                    "false" => {
+                        |name: &str| (name == "MAILCLI_SAVE_SENT").then(|| "false".to_string())
+                    }
+                    "no" => |name: &str| (name == "MAILCLI_SAVE_SENT").then(|| "no".to_string()),
+                    _ => |name: &str| (name == "MAILCLI_SAVE_SENT").then(|| "off".to_string()),
+                },
+            };
+            assert!(!env.save_sent().unwrap(), "{val:?} should disable saving");
+        }
+    }
+
+    #[test]
+    fn save_sent_on_when_env_is_one_or_true() {
+        let env = Env {
+            suffix: None,
+            lookup: |name| (name == "MAILCLI_SAVE_SENT").then(|| "1".to_string()),
+        };
+        assert!(env.save_sent().unwrap());
+    }
+
+    #[test]
+    fn save_sent_rejects_garbage_naming_the_var() {
+        let env = Env {
+            suffix: Some("2".to_string()),
+            lookup: |name| (name == "MAILCLI_SAVE_SENT_2").then(|| "maybe".to_string()),
+        };
+        let err = env.save_sent().unwrap_err();
+        assert!(
+            err.to_string().contains("MAILCLI_SAVE_SENT_2"),
+            "error should name the suffixed var, got: {err}"
+        );
     }
 }

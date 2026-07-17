@@ -192,6 +192,13 @@ enum Command {
         /// Attach a file (repeatable).
         #[arg(long)]
         attach: Vec<PathBuf>,
+        /// Sent folder to file a copy into. Overrides MAILCLI_SENT_FOLDER and
+        /// special-use auto-discovery.
+        #[arg(long)]
+        sent_folder: Option<String>,
+        /// Do not save a copy to the Sent folder (overrides MAILCLI_SAVE_SENT).
+        #[arg(long)]
+        no_save_sent: bool,
     },
 
     /// Install the bundled agent skill (SKILL.md + references + evals).
@@ -333,7 +340,21 @@ fn run() -> Result<()> {
             body_file,
             html,
             attach,
-        } => cmd_send(&env, to, cc, bcc, subject, body, body_file, html, attach),
+            sent_folder,
+            no_save_sent,
+        } => cmd_send(
+            &env,
+            to,
+            cc,
+            bcc,
+            subject,
+            body,
+            body_file,
+            html,
+            attach,
+            sent_folder,
+            no_save_sent,
+        ),
         Command::InstallSkill { dir, force } => cmd_install_skill(dir, force),
     }
 }
@@ -519,6 +540,8 @@ fn cmd_send(
     body_file: Option<String>,
     html: bool,
     attach: Vec<PathBuf>,
+    sent_folder: Option<String>,
+    no_save_sent: bool,
 ) -> Result<()> {
     if to.is_empty() {
         bail!("at least one --to recipient is required");
@@ -535,9 +558,53 @@ fn cmd_send(
         attachments: attach,
     };
     let email = smtp::build(&cfg, &outgoing)?;
+
+    // Primary effect: deliver. A failure here is fatal (nothing went out).
     smtp::send(&cfg, &email)?;
     println!("message sent");
+
+    // Secondary effect: file a copy in Sent. Best-effort — the mail is already
+    // delivered, so nothing below may fail the command (a non-zero exit would
+    // invite a retry, which double-sends). We warn and return Ok.
+    let save = !no_save_sent && env.save_sent()?;
+    if save {
+        save_to_sent(env, sent_folder, &smtp::formatted(&email));
+    }
     Ok(())
+}
+
+/// Best-effort: IMAP-`APPEND` a copy of the just-sent message into the Sent
+/// folder. Never returns an error — every failure path prints a `note:`/
+/// `warning:` to stderr and returns, because the message has already gone out.
+fn save_to_sent(env: &config::Env, sent_folder: Option<String>, raw: &[u8]) {
+    let imap_cfg = match ImapConfig::from_env(env) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!(
+                "note: not saving a copy to Sent (IMAP not configured: {e:#}); \
+                 set MAILCLI_SAVE_SENT=0 to silence"
+            );
+            return;
+        }
+    };
+    let mut session = match imap::connect(&imap_cfg) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("warning: could not save a copy to Sent (IMAP connect failed: {e:#})");
+            return;
+        }
+    };
+    // Folder resolution: --sent-folder > MAILCLI_SENT_FOLDER > \Sent special-use
+    // discovery > the literal "Sent" default.
+    let folder = sent_folder
+        .or_else(|| env.sent_folder())
+        .or_else(|| imap::discover_sent(&mut session))
+        .unwrap_or_else(|| "Sent".to_string());
+    match imap::append_to_sent(&mut session, &folder, raw) {
+        Ok(()) => println!("saved copy to {folder}"),
+        Err(e) => eprintln!("warning: could not save a copy to {folder:?}: {e:#}"),
+    }
+    let _ = session.logout();
 }
 
 /// Install the bundled agent skill to disk. Local-only; reads no env.

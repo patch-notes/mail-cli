@@ -37,6 +37,8 @@ given command needs are required; a missing one fails loud, naming the variable.
 | `MAILCLI_PASSWORD` | yes | — | Password / app-password / (with `xoauth2`) an OAuth access token |
 | `MAILCLI_TLS` | no | `implicit` | `implicit` (TLS on connect) or `starttls` |
 | `MAILCLI_AUTH` | no | `login` | `login` (PLAIN/LOGIN) or `xoauth2` (token passthrough) |
+| `MAILCLI_SENT_FOLDER` | no | auto → `Sent` | Folder `send` files a copy into; unset = auto-discover `\Sent` special-use, else `Sent` |
+| `MAILCLI_SAVE_SENT` | no | `1` | `send` saves a copy to Sent by default; `0/false/no/off` disables it |
 | `MAILCLI_ACCOUNT` | no | — | Default account selector when `--account` is omitted |
 
 Switch accounts by switching environment (shell export, `direnv`, a wrapper
@@ -163,6 +165,17 @@ mail-cli send --to a@x.com,b@y.com --cc c@z.com \
 mail-cli send --to a@x.com --subject S --body-file note.txt
 echo "hi" | mail-cli send --to a@x.com --subject S --body-file -
 mail-cli send --to a@x.com --subject S --html --body '<p>Hi</p>'
+```
+- **Saving to Sent (default on).** After delivery, `send` files an identical
+  copy into the Sent folder over IMAP (flagged read). Folder precedence:
+  `--sent-folder` > `MAILCLI_SENT_FOLDER` > auto-discovered `\Sent` mailbox >
+  `Sent`. It's **best-effort**: a failed copy prints a `warning:` but `send`
+  still exits `0` (retrying would double-send). Disable with `--no-save-sent` or
+  `MAILCLI_SAVE_SENT=0`; if IMAP isn't configured, saving is skipped with a
+  `note:`.
+```sh
+mail-cli send --to a@x.com --subject S --body hi --sent-folder "Sent Items"
+mail-cli send --to a@x.com --subject S --body hi --no-save-sent
 ```
 
 ## Recommended workflow for an agent

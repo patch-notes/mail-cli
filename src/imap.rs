@@ -154,6 +154,34 @@ pub fn fetch_raw(session: &mut Conn, folder: &str, uid: u32) -> Result<Vec<u8>> 
     }
 }
 
+/// APPEND a copy of a just-sent message into the Sent folder, flagged `\Seen`
+/// (we file our own outgoing mail as already read). The raw bytes are the exact
+/// RFC822 payload that went over SMTP. GreenMail and most servers auto-create a
+/// missing mailbox on APPEND; when they don't, this fails and the caller warns.
+pub fn append_to_sent(session: &mut Conn, folder: &str, raw: &[u8]) -> Result<()> {
+    let mut cmd = session.append(folder, raw);
+    cmd.flag(Flag::Seen);
+    cmd.finish()
+        .with_context(|| format!("APPEND to {folder:?} failed"))?;
+    Ok(())
+}
+
+/// Discover the Sent folder via the RFC 6154 SPECIAL-USE `\Sent` attribute.
+/// Returns the mailbox name flagged `\Sent`, or `None` if the server advertises
+/// no such mailbox (or doesn't support special-use at all). Best-effort: a
+/// failed LIST just yields `None` so the caller falls back to its default.
+pub fn discover_sent(session: &mut Conn) -> Option<String> {
+    let names = session.list(None, Some("*")).ok()?;
+    names
+        .iter()
+        .find(|n| {
+            n.attributes()
+                .iter()
+                .any(|a| matches!(a, imap_proto::NameAttribute::Sent))
+        })
+        .map(|n| n.name().to_string())
+}
+
 /// Render IMAP flags to their canonical `\Seen`-style strings.
 fn format_flags(flags: &[Flag<'_>]) -> Vec<String> {
     flags

@@ -121,3 +121,9 @@ pub fn send(cfg: &SmtpConfig, email: &Message) -> Result<()> {
         .map(|_| ())
         .with_context(|| format!("failed to send message via {}:{}", cfg.host, cfg.port))
 }
+
+/// The exact RFC822 bytes of a built message — the same payload `send` puts on
+/// the wire. Used to file an identical copy into the Sent folder via IMAP.
+pub fn formatted(email: &Message) -> Vec<u8> {
+    email.formatted()
+}

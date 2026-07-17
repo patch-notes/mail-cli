@@ -12,7 +12,8 @@ src/
   main.rs    // clap surface, Selector enum, live selector resolution, dispatch
   config.rs  // the ONLY boundary that reads env; per-command validation;
              //   Env account-suffix resolver + accounts scan
-  imap.rs    // the ONLY place that talks IMAP (connect/auth/list/fetch)
+  imap.rs    // the ONLY place that talks IMAP (connect/auth/list/fetch;
+             //   append-to-Sent + \Sent special-use discovery)
   parse.rs   // mail-parser wrappers; Summary/Rendered/Attachment structs
   smtp.rs    // lettre message build (+attachments) and send
   skill.rs   // embeds skill/ assets; install-skill writes them to disk
@@ -51,7 +52,11 @@ inside `imap.rs` so a future async swap stays contained.
 - Unit tests sit beside code in `mod tests`. Cover parsing (inline `.eml`
   fixtures), `Selector` parsing, and `Config` env cases.
 - **Every bug fix starts with a failing test** that reproduces it, then the fix.
-- Integration (planned): GreenMail in Docker for connect→list→fetch and send.
+- Integration: GreenMail in Docker/podman, gated on `MAILCLI_IT=1`. Covers the
+  `search` query builder (`tests/search_integration.rs`) and the save-to-Sent
+  `APPEND`/`\Sent` discovery paths (`tests/sent_integration.rs`). GreenMail must
+  bind `0.0.0.0` (`-Dgreenmail.hostname=0.0.0.0`) or podman forwarding drops the
+  connection. The lib crate exposes `imap`/`config`/`parse` for these tests.
 
 ## Commit & Pull Request Guidelines
 

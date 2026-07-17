@@ -6,6 +6,10 @@ edition = "2024"
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 imap = { version = "3.0.0-alpha.15", default-features = false, features = ["rustls-tls"] }
+# Re-used for the `\Sent` special-use LIST attribute (RFC 6154) when
+# auto-discovering the Sent folder. Pinned to the version `imap` resolves to so
+# the `NameAttribute` type matches what `imap::types::Name::attributes()` returns.
+imap-proto = "=0.16.7"
 lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "pool", "rustls-tls", "hostname"] }
 mail-parser = "0.11"
 serde = { version = "1", features = ["derive"] }

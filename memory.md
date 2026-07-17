@@ -174,6 +174,75 @@
   "dropped --account/profiles" resolved: this env-only suffix form stays inside
   env-only+stateless, so it supersedes that line for THIS form only (user
   confirmed).
+- 2026-07-09 (rev 14): RELEASED v0.2.0. Changes since v0.1.0: install.sh
+  one-liner (PR #3, already on master) + multi-account (PR #4, already
+  merged). Wrote CHANGELOG.md (Keep a Changelog format; v0.1.0 baseline
+  so the file stands alone) + bumped Cargo.toml 0.1.0 → 0.2.0 on master.
+  Release commit `c484886`. Tagged v0.2.0 annotated; pushed; release
+  workflow queued as run 29002861696. Default-account = bare MAILCLI_* =
+  zero breakage, so this is a MINOR not MAJOR bump. Release workflow
+  builds linux-amd64, macos-amd64, macos-arm64, windows-amd64 binaries
+  and publishes as a GitHub release.
+- 2026-07-09 (rev 15): RELEASE COMPLETE. All 4 build jobs green, publish
+  job 12s, run 29002861696 finished in ~3 min total. Verified via REST
+  /releases/tags/v0.2.0 (gh CLI hung twice; curl + gh auth token +
+  python parse = clean summary). 4 assets, all state=uploaded, sizes
+  5.5/4.9/4.5/5.5 MiB for linux-amd64/macos-amd64/macos-arm64/windows-
+  amd64.exe. Published 2026-07-09T07:55:29Z; draft=false, prerelease=
+  false. Telegram ping sent via skill script (success). NOTES for next
+  release: gh release view hung at 30s AND 120s — fall back to
+  /releases/tags/<tag> JSON endpoint with gh auth token if it hangs
+  again; gh run watch REQUIRES a run-id arg when started non-interactive
+  (got "run ID required when not running interactively" — fixed on
+  second attempt).
+
+- 2026-07-17 (rev 16): PLANNED save-to-Sent (plan only, not implemented).
+  Wrote plans/SAVE-TO-SENT-PLAN.md. ROOT CAUSE: `send` only calls smtp::send
+  (SMTP relay); it never IMAP-APPENDs a copy into Sent. SMTP delivery != Sent
+  mailbox; Gmail auto-appends but most providers don't. FIX: after SMTP ok,
+  APPEND lettre `Message::formatted()` bytes into Sent, flagged \Seen,
+  INTERNALDATE=now, via new imap::append_to_sent (crate AppendCmd, same path as
+  the search integration test). DESIGN: folder = --sent-folder > MAILCLI_SENT_
+  FOLDER > SPECIAL-USE \Sent autodiscover > "Sent"; default ON but best-effort:
+  skip silently if IMAP not configured & not explicitly requested, else loud;
+  APPEND failure = WARN + exit 0 (mail already went out — never fail a delivered
+  send or a retry double-sends); --json gains saved_to_sent/sent_folder/
+  save_error. config.rs stays sole env boundary (adds sent_folder()/save_sent()
+  methods, no new REQUIRED vars = zero breakage); IMAP calls stay in imap.rs.
+  Non-goals v1: no auto-CREATE, no Fcc/bcc-self, no offline retry queue. 3 open
+  Qs for user (default on?, autodiscover in v1?, warn-vs-fail on APPEND error).
+
+- 2026-07-17 (rev 17): IMPLEMENTED save-to-Sent (SAVE-TO-SENT-PLAN). User
+  answered: (1) default ON, (2) DO the SPECIAL-USE autodiscovery in v1, (3) WARN
+  (not fail). Ran ZoE review first → 2 cuts adopted: (a) DROPPED --json-on-send
+  entirely (send had no JSON today; unrequested feature = YAGNI), (b) DROPPED the
+  --save-sent force flag → single bool: default on, --no-save-sent /
+  MAILCLI_SAVE_SENT=0 to opt out; if IMAP unconfigured print a one-line note:
+  (not silent, not fatal) since a silent skip looks like the very bug. TDD:
+  wrote failing tests FIRST (config unit tests for sent_folder()/save_sent();
+  tests/sent_integration.rs), confirmed red (missing methods + private
+  mail_cli::imap), then went green. IMPL: config.rs adds Env::sent_folder()->
+  Option<String> (raw env read; "Sent" DEFAULT lives at point-of-use in main.rs,
+  per ZoE) + save_sent()->Result<bool> (1/0,true/false,yes/no,on/off; garbage
+  rejected naming resolved var). imap.rs adds append_to_sent (session.append().
+  flag(Seen).finish()) + discover_sent (LIST, match imap_proto::NameAttribute::
+  Sent). Added imap-proto="=0.16.7" as a DIRECT dep (pin to imap's resolved
+  version) to name that enum — imap doesn't re-export NameAttribute. smtp.rs
+  adds formatted(&Message)->Vec<u8> (single source = the built Message; no
+  double-format cleverness, no send_raw). main.rs: send gains --sent-folder /
+  --no-save-sent; cmd_send does primary send (fatal on fail) then best-effort
+  save_to_sent() helper that NEVER returns Err (all paths warn/note + return);
+  folder precedence --sent-folder > env.sent_folder() > discover_sent >
+  "Sent". lib.rs now exposes pub mod config/imap/parse (was search-only) for the
+  integration test — FIXED its now-false doc comment (misleading-comment rule).
+  VERIFY: 38 lib + 33 bin unit pass; clippy clean; fmt clean. Integration ran
+  under GreenMail (podman, MUST bind 0.0.0.0 + auth.disabled per rev 6) — both
+  sent tests PASS (copy lands in Sent flagged \Seen; discovery selects a valid
+  mailbox). install-skill --force output BYTE-IDENTICAL to skill/ (diff -rq).
+  Docs synced: README (config table +2 rows, Saving-to-Sent section, testing
+  cmd), AGENTS.md (imap.rs desc, testing guidelines de-"planned"), SKILL.md +
+  reference.md + evals.json (+eval 8). CHANGELOG [Unreleased] added (MINOR:
+  additive, degrades to skip when IMAP absent). Opened PR (see below).
 
 ## Semantic (facts learned)
 - Rust email crate landscape (mid-2026):
