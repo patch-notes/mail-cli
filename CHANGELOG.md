@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-17
+
 ### Added
 
 - **`send` saves a copy to the Sent folder.** Previously a sent message was
@@ -124,5 +126,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - 16 lib + 26 bin unit + 3 integration tests; `cargo clippy --all-targets
   -D warnings` and `cargo fmt` clean.
 
+[0.3.0]: https://github.com/patch-notes/mail-cli/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/patch-notes/mail-cli/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/patch-notes/mail-cli/releases/tag/v0.1.0
