@@ -22,3 +22,44 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
+
+  integration:
+    name: integration (GreenMail)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      greenmail:
+        image: greenmail/standalone:2.1.0
+        ports:
+          - 3025:3025
+          - 3143:3143
+        env:
+          # Open plaintext SMTP (3025) + IMAP (3143); bind 0.0.0.0 so the mapped
+          # port is reachable; auth.disabled auto-provisions users on login.
+          GREENMAIL_OPTS: >-
+            -Dgreenmail.setup.test.smtp
+            -Dgreenmail.setup.test.imap
+            -Dgreenmail.hostname=0.0.0.0
+            -Dgreenmail.auth.disabled
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # GreenMail has no HTTP healthcheck; wait for its ports to accept TCP.
+      - name: Wait for GreenMail
+        run: |
+          for port in 3025 3143; do
+            for i in $(seq 1 30); do
+              if timeout 1 bash -c "</dev/tcp/127.0.0.1/$port" 2>/dev/null; then
+                echo "port $port is up"; break
+              fi
+              if [ "$i" -eq 30 ]; then echo "port $port never came up" >&2; exit 1; fi
+              sleep 1
+            done
+          done
+      # Serialized (--test-threads=1): GreenMail with auth.disabled shares global
+      # state, and concurrent logins/APPENDs interfere.
+      - name: Integration + e2e tests
+        env:
+          MAILCLI_IT: "1"
+        run: cargo test --locked --test search_integration --test sent_integration --test send_e2e -- --test-threads=1

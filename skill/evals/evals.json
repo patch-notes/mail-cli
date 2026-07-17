@@ -42,6 +42,12 @@
       "prompt": "How do I see which email accounts I've configured for mail-cli, and check that account 2 is fully set up? I don't want to accidentally print my passwords.",
       "expected_output": "Runs `mail-cli accounts` (optionally `--json`) to list configured accounts and their ok/incomplete status. Notes it never prints passwords (only has_password / a presence flag), reports whether account 2 shows as complete, and opens no connection. Does not cat env or echo MAILCLI_PASSWORD*.",
       "files": []
+    },
+    {
+      "id": 8,
+      "prompt": "When I send mail with mail-cli it goes out fine but nothing shows up in my Sent folder. My server's sent mailbox is actually called 'Sent Items'. How do I make mail-cli save a copy there?",
+      "expected_output": "Explains that `send` already saves a copy to Sent by default via IMAP APPEND (SMTP alone never files Sent), and that the folder name is configurable: pass `--sent-folder 'Sent Items'` or set `MAILCLI_SENT_FOLDER='Sent Items'`. Notes the save is best-effort (warns, exits 0, doesn't double-send) and needs IMAP env vars configured. Does not suggest a config file, BCC-to-self, or claim SMTP auto-files Sent.",
+      "files": []
     }
   ]
 }

@@ -230,6 +230,11 @@ These are deliberate; work with them rather than around them:
   flag but isn't, check whether it's a `MAILCLI_*` var before assuming it's
   missing.
 - **Read commands are IMAP; `send` is SMTP.** They validate independently, so
-  you can run reads with only IMAP vars set.
+  you can run reads with only IMAP vars set. Note `send` *also* touches IMAP as a
+  best-effort step: it files a copy in the Sent folder (`--sent-folder` >
+  `MAILCLI_SENT_FOLDER` > auto-discovered `\Sent` > `Sent`). That copy failing
+  never fails the send — it warns and exits `0`, because the mail already went
+  out and a retry would double-send. Disable with `--no-save-sent` /
+  `MAILCLI_SAVE_SENT=0`; skipped with a `note:` if IMAP isn't configured.
 - **`--raw` (RFC822) output is bytes on stdout.** Redirect to a file if you want
   to keep it; don't expect JSON.
