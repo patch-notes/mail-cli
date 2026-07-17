@@ -18,6 +18,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `MAILCLI_SENT_FOLDER` / `MAILCLI_SAVE_SENT` env vars (per-account, suffixable).
 - Integration tests (`tests/sent_integration.rs`, gated on `MAILCLI_IT=1`)
   covering the `APPEND`-to-Sent and `\Sent` discovery paths against GreenMail.
+- A full **send→INBOX+Sent e2e test** (`tests/send_e2e.rs`) that builds a message
+  with mail-cli's real builder, delivers it, and files the copy with mail-cli's
+  real IMAP `APPEND`, asserting both landed (Sent copy flagged `\Seen`). Only the
+  encrypted transport hop is substituted (mail-cli's SMTP TLS trusts bundled
+  webpki roots and can't validate GreenMail's self-signed cert; the payload sent
+  is byte-identical). Plus a binary-level smoke test for the new flags and the
+  SMTP-failure-is-fatal path.
+- CI: a new `integration (GreenMail)` job runs all three IMAP/SMTP-backed test
+  files on every PR, against a GreenMail service container.
 
 ### Behavior
 

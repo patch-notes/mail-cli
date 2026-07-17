@@ -255,18 +255,22 @@ cargo test
 ```
 The `search` query builder and parsing/selector logic are fully covered here.
 
-Integration tests exercise `search` and the save-to-Sent `APPEND`/discovery
-paths against a real IMAP server
+Integration tests exercise `search`, the save-to-Sent `APPEND`/discovery paths,
+and a full send→INBOX+Sent **e2e loop** against a real IMAP/SMTP server
 ([GreenMail](https://greenmail-mail-test.github.io/greenmail/)). They are
 **gated on `MAILCLI_IT=1`** so a plain `cargo test` never needs a server:
 ```sh
 podman run -d --name greenmail-mailcli -p 3025:3025 -p 3143:3143 \
-  -e GREENMAIL_OPTS='-Dgreenmail.setup.test.imap -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled' \
+  -e GREENMAIL_OPTS='-Dgreenmail.setup.test.smtp -Dgreenmail.setup.test.imap -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled' \
   docker.io/greenmail/standalone:2.1.0
 
-MAILCLI_IT=1 cargo test --test search_integration
-MAILCLI_IT=1 cargo test --test sent_integration
+MAILCLI_IT=1 cargo test --test search_integration --test sent_integration --test send_e2e -- --test-threads=1
 ```
+These also run automatically on every PR via the `integration (GreenMail)` CI
+job. `send_e2e` builds a message with mail-cli's real builder, delivers it, and
+files the copy with mail-cli's real IMAP `APPEND` — only the encrypted transport
+hop is substituted (mail-cli's SMTP TLS trusts bundled roots only, so it can't
+validate GreenMail's self-signed cert; the payload sent is byte-identical).
 (`docker` works too if you prefer it to `podman`.)
 
 ## License

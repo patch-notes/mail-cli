@@ -244,6 +244,33 @@
   reference.md + evals.json (+eval 8). CHANGELOG [Unreleased] added (MINOR:
   additive, degrades to skip when IMAP absent). Opened PR (see below).
 
+- 2026-07-17 (rev 18): Follow-up on PR #5 (user asked: is the e2e actually run,
+  and is it on CI?). Answer was NO on CI. Added a TRUE e2e + CI. KEY FINDING via
+  Cargo.lock: mail-cli's TLS backends DIFFER — IMAP (imap crate → rustls-connector)
+  uses rustls-NATIVE-certs (OS trust store, injectable), but SMTP (lettre) is
+  pinned to WEBPKI-ROOTS (bundled Mozilla roots, NOT injectable, ignores
+  SSL_CERT_FILE/OS store). So a full-binary `mail-cli send` over TLS to GreenMail
+  (self-signed cert) is IMPOSSIBLE without weakening SMTP TLS — which the design
+  forbids (no accept-invalid-certs flag). So the honest e2e (tests/send_e2e.rs):
+  builds the msg with REAL smtp::build, gets REAL smtp::formatted bytes, delivers
+  over GreenMail PLAINTEXT SMTP via lettre SmtpTransport::builder_dangerous
+  (test-only, byte-identical payload — the ONE substituted piece), then files the
+  copy with REAL imap::append_to_sent and verifies BOTH INBOX delivery AND a Sent
+  copy flagged \Seen. Plus a binary smoke test (env!("CARGO_BIN_EXE_mail-cli")):
+  `send --help` advertises --sent-folder/--no-save-sent, and `send` to an
+  unroutable SMTP host exits NON-ZERO (SMTP-fatal path). Exposed `pub mod smtp`
+  in lib.rs (SmtpConfig fields already pub → construct directly in test). GOTCHA:
+  imap Flag::to_owned still borrows the Fetches → E0515/E0597; fixed by returning
+  a bool (\Seen present) not Vec<Flag>. CLIPPY -D warnings (CI) tripped on the
+  doc-comment: a line starting with `+` and "(a)/(b)" parse as doc-list items →
+  reworded to avoid leading `+` and parenthesized letters. CI: added an
+  `integration (GreenMail)` job to ci.yml — GreenMail service container (SMTP
+  3025 + IMAP 3143, 0.0.0.0, auth.disabled), a /dev/tcp port-wait step (GreenMail
+  has NO healthcheck), runs search+sent+send_e2e with MAILCLI_IT=1
+  --test-threads=1. Verified locally: e2e 2/2 + all suites green; clippy+fmt
+  clean. Docs synced (README testing section, AGENTS.md, CHANGELOG). Pushed to
+  PR #5.
+
 ## Semantic (facts learned)
 - Rust email crate landscape (mid-2026):
   - `imap` (jonhoo) = sync, simple, but stuck on 3.0.0-alpha, seeking maintainers.

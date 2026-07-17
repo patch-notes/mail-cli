@@ -52,11 +52,17 @@ inside `imap.rs` so a future async swap stays contained.
 - Unit tests sit beside code in `mod tests`. Cover parsing (inline `.eml`
   fixtures), `Selector` parsing, and `Config` env cases.
 - **Every bug fix starts with a failing test** that reproduces it, then the fix.
-- Integration: GreenMail in Docker/podman, gated on `MAILCLI_IT=1`. Covers the
-  `search` query builder (`tests/search_integration.rs`) and the save-to-Sent
-  `APPEND`/`\Sent` discovery paths (`tests/sent_integration.rs`). GreenMail must
-  bind `0.0.0.0` (`-Dgreenmail.hostname=0.0.0.0`) or podman forwarding drops the
-  connection. The lib crate exposes `imap`/`config`/`parse` for these tests.
+- Integration: GreenMail in Docker/podman, gated on `MAILCLI_IT=1`, and run on
+  every PR by the `integration (GreenMail)` CI job. Covers the `search` query
+  builder (`tests/search_integration.rs`), the save-to-Sent `APPEND`/`\Sent`
+  discovery paths (`tests/sent_integration.rs`), and a full send→INBOX+Sent e2e
+  loop (`tests/send_e2e.rs`) that drives mail-cli's real build/append code — only
+  the encrypted transport hop is substituted (SMTP TLS trusts bundled webpki
+  roots, so it can't validate GreenMail's self-signed cert; IMAP TLS uses OS
+  roots). GreenMail must bind `0.0.0.0` (`-Dgreenmail.hostname=0.0.0.0`) or
+  podman/CI port-forwarding drops the connection. Run serialized
+  (`--test-threads=1`). The lib crate exposes `imap`/`smtp`/`config`/`parse` for
+  these tests.
 
 ## Commit & Pull Request Guidelines
 
