@@ -7,6 +7,9 @@ mod config;
 mod imap;
 mod output;
 mod parse;
+// used by cmd_reply (T7)
+#[allow(dead_code)]
+mod reply;
 mod skill;
 mod smtp;
 
@@ -578,6 +581,29 @@ fn cmd_send(
     Ok(())
 }
 
+/// Resolve the Sent folder (`--sent-folder` > `MAILCLI_SENT_FOLDER` > `\Sent`
+/// discovery > the literal `"Sent"` default) and APPEND `raw` into it on an
+/// already-open session. Best-effort: warns on stderr and returns `None` on
+/// failure, `Some(folder)` on success. Prints nothing on success.
+fn file_sent_copy(
+    session: &mut imap::Conn,
+    env: &config::Env,
+    sent_folder: Option<String>,
+    raw: &[u8],
+) -> Option<String> {
+    let folder = sent_folder
+        .or_else(|| env.sent_folder())
+        .or_else(|| imap::discover_sent(session))
+        .unwrap_or_else(|| "Sent".to_string());
+    match imap::append_to_sent(session, &folder, raw) {
+        Ok(()) => Some(folder),
+        Err(e) => {
+            eprintln!("warning: could not save a copy to {folder:?}: {e:#}");
+            None
+        }
+    }
+}
+
 /// Best-effort: IMAP-`APPEND` a copy of the just-sent message into the Sent
 /// folder. Never returns an error — every failure path prints a `note:`/
 /// `warning:` to stderr and returns, because the message has already gone out.
@@ -599,15 +625,8 @@ fn save_to_sent(env: &config::Env, sent_folder: Option<String>, raw: &[u8]) {
             return;
         }
     };
-    // Folder resolution: --sent-folder > MAILCLI_SENT_FOLDER > \Sent special-use
-    // discovery > the literal "Sent" default.
-    let folder = sent_folder
-        .or_else(|| env.sent_folder())
-        .or_else(|| imap::discover_sent(&mut session))
-        .unwrap_or_else(|| "Sent".to_string());
-    match imap::append_to_sent(&mut session, &folder, raw) {
-        Ok(()) => println!("saved copy to {folder}"),
-        Err(e) => eprintln!("warning: could not save a copy to {folder:?}: {e:#}"),
+    if let Some(folder) = file_sent_copy(&mut session, env, sent_folder, raw) {
+        println!("saved copy to {folder}");
     }
     let _ = session.logout();
 }
