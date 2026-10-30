@@ -7,8 +7,6 @@ mod config;
 mod imap;
 mod output;
 mod parse;
-// used by cmd_reply (T7)
-#[allow(dead_code)]
 mod reply;
 mod skill;
 mod smtp;
@@ -30,7 +28,7 @@ use parse::BodyKind;
 #[derive(Parser)]
 #[command(name = "mail-cli", version, about, long_about = None)]
 struct Cli {
-    /// Emit JSON instead of human-friendly output (read commands only).
+    /// Emit JSON instead of human-friendly output (read commands and reply).
     #[arg(long, global = true)]
     json: bool,
 
@@ -204,6 +202,51 @@ enum Command {
         no_save_sent: bool,
     },
 
+    /// Reply to one message, threaded. SELECTOR is `N` (live index) or `uid:NNN`.
+    ///
+    /// Replies to Reply-To (else From); --all also Cc's the original To and Cc,
+    /// minus you (MAILCLI_EMAIL). Quotes the original text under your body unless
+    /// --no-quote. Then saves a copy to Sent and marks the original \Answered —
+    /// both best-effort, like `send`. Needs IMAP and SMTP configured.
+    Reply {
+        folder: String,
+        selector: Selector,
+        /// Reply to all: also Cc the original To and Cc recipients (minus you).
+        #[arg(long)]
+        all: bool,
+        /// Extra To recipient(s), comma-separated, added to the computed ones.
+        #[arg(long, value_delimiter = ',')]
+        to: Vec<String>,
+        /// Extra Cc recipient(s), comma-separated, added to the computed ones.
+        #[arg(long, value_delimiter = ',')]
+        cc: Vec<String>,
+        /// Bcc recipient(s), comma-separated.
+        #[arg(long, value_delimiter = ',')]
+        bcc: Vec<String>,
+        /// Body text (mutually exclusive with --body-file).
+        #[arg(long, conflicts_with = "body_file")]
+        body: Option<String>,
+        /// Read body from a file; `-` means stdin.
+        #[arg(long)]
+        body_file: Option<String>,
+        /// Do not quote the original message under the body.
+        #[arg(long)]
+        no_quote: bool,
+        /// Send the body as HTML. Requires --no-quote (quoting is plain text).
+        #[arg(long, requires = "no_quote")]
+        html: bool,
+        /// Attach a file (repeatable).
+        #[arg(long)]
+        attach: Vec<PathBuf>,
+        /// Sent folder to file a copy into. Overrides MAILCLI_SENT_FOLDER and
+        /// special-use auto-discovery.
+        #[arg(long)]
+        sent_folder: Option<String>,
+        /// Do not save a copy to the Sent folder (overrides MAILCLI_SAVE_SENT).
+        #[arg(long)]
+        no_save_sent: bool,
+    },
+
     /// Install the bundled agent skill (SKILL.md + references + evals).
     ///
     /// The skill is compiled into the binary; this writes it to disk. Purely
@@ -353,6 +396,37 @@ fn run() -> Result<()> {
             subject,
             body,
             body_file,
+            html,
+            attach,
+            sent_folder,
+            no_save_sent,
+        ),
+        Command::Reply {
+            folder,
+            selector,
+            all,
+            to,
+            cc,
+            bcc,
+            body,
+            body_file,
+            no_quote,
+            html,
+            attach,
+            sent_folder,
+            no_save_sent,
+        } => cmd_reply(
+            &env,
+            cli.json,
+            &folder,
+            selector,
+            all,
+            to,
+            cc,
+            bcc,
+            body,
+            body_file,
+            no_quote,
             html,
             attach,
             sent_folder,
@@ -579,6 +653,130 @@ fn cmd_send(
         save_to_sent(env, sent_folder, &smtp::formatted(&email));
     }
     Ok(())
+}
+
+/// Reply to one message, threaded (REPLY-PLAN §5.2, ordering locked).
+///
+/// Every fallible step that needs no network runs first (steps 1–5), and
+/// every fatal step runs before the SMTP send (step 15) — the point of no
+/// return. After delivery, only best-effort side effects remain (Sent copy,
+/// `\Answered`); they warn to stderr and never fail the command, because a
+/// non-zero exit after delivery would invite a retry, which double-sends.
+#[allow(clippy::too_many_arguments)]
+fn cmd_reply(
+    env: &config::Env,
+    json: bool,
+    folder: &str,
+    selector: Selector,
+    all: bool,
+    to: Vec<String>,
+    cc: Vec<String>,
+    bcc: Vec<String>,
+    body: Option<String>,
+    body_file: Option<String>,
+    no_quote: bool,
+    html: bool,
+    attach: Vec<PathBuf>,
+    sent_folder: Option<String>,
+    no_save_sent: bool,
+) -> Result<()> {
+    // Steps 1–5: no network. A typo never costs a round trip, and nothing
+    // irreversible happens until every one of these has passed.
+    let body = resolve_body(body, body_file)?;
+    let imap_cfg = ImapConfig::from_env(env)?; // reply NEEDS IMAP (unlike send)
+    let smtp_cfg = SmtpConfig::from_env(env)?;
+    // Validate SAVE_SENT before sending: a typo must fail here, not after
+    // delivery (a post-send failure invites a double-send).
+    let save = !no_save_sent && env.save_sent()?;
+    let me = smtp::account_address(&smtp_cfg)?;
+
+    // Steps 6–9: one IMAP session, held from fetch to \Answered.
+    let mut session = imap::connect(&imap_cfg)?;
+    let (uid, index) = resolve(&mut session, folder, selector)?;
+    let raw = imap::fetch_raw(&mut session, folder, uid)?;
+    let orig = parse::original(&raw)?;
+
+    // Steps 10–13: derive recipients, threading, subject, and body from the
+    // parent, and turn addresses into display strings. An unparseable parent
+    // address fails here, before send, naming the address (REPLY-PLAN §8 R5).
+    let (computed_to, computed_cc) = reply::recipients(&orig, &me, all);
+    reply::require_recipients(&computed_to, &to)?;
+    let thread = reply::threading(&orig);
+    let subject = reply::subject(&orig.subject);
+    let body = if no_quote {
+        body
+    } else {
+        reply::quoted_body(&body, &orig)
+    };
+    let to_addrs: Vec<String> = computed_to
+        .iter()
+        .map(|a| smtp::mailbox_string(a.name.as_deref(), &a.email))
+        .collect::<Result<Vec<_>>>()?;
+    let cc_addrs: Vec<String> = computed_cc
+        .iter()
+        .map(|a| smtp::mailbox_string(a.name.as_deref(), &a.email))
+        .collect::<Result<Vec<_>>>()?;
+    // Explicit --to/--cc are appended verbatim: we don't second-guess
+    // explicit flags (REPLY-PLAN §5.1).
+    let mut to_out = to_addrs;
+    to_out.extend(to);
+    let mut cc_out = cc_addrs;
+    cc_out.extend(cc);
+
+    let outgoing = smtp::Outgoing {
+        to: to_out,
+        cc: cc_out,
+        bcc,
+        subject,
+        body,
+        html,
+        attachments: attach,
+        in_reply_to: thread.in_reply_to,
+        references: thread.references,
+    };
+    // Step 14: build (reads the attachment files; a bad --to/--attach fails
+    // here, before send).
+    let email = smtp::build(&smtp_cfg, &outgoing)?;
+    let message_id = smtp::message_id(&email);
+
+    // Step 15: deliver. Point of no return — nothing below may fail the
+    // command (a non-zero exit after delivery invites a double-send).
+    smtp::send(&smtp_cfg, &email)?;
+
+    // Steps 16–17: best-effort side effects on the same session. Warnings go
+    // to stderr as they happen; the exit stays 0.
+    let saved_to = save
+        .then(|| file_sent_copy(&mut session, env, sent_folder, &smtp::formatted(&email)))
+        .flatten();
+    let answered = match imap::mark_answered(&mut session, folder, uid) {
+        Ok(()) => true,
+        Err(e) => {
+            eprintln!("warning: sent, but could not mark uid:{uid} \\Answered: {e:#}");
+            false
+        }
+    };
+    let _ = session.logout();
+
+    // Step 19: the report — the single thing rendered (human or --json).
+    let report = reply::ReplyReport {
+        folder: folder.to_string(),
+        uid,
+        message_id,
+        to: outgoing.to,
+        cc: outgoing.cc,
+        bcc: outgoing.bcc,
+        subject: outgoing.subject,
+        in_reply_to: outgoing.in_reply_to,
+        references: outgoing.references,
+        saved_to,
+        answered,
+    };
+    if json {
+        output::json(&report)
+    } else {
+        output::reply_human(&report, index);
+        Ok(())
+    }
 }
 
 /// Resolve the Sent folder (`--sent-folder` > `MAILCLI_SENT_FOLDER` > `\Sent`

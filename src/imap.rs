@@ -185,8 +185,6 @@ pub fn discover_sent(session: &mut Conn) -> Option<String> {
 /// Add `\Answered` to one message (SELECT + `UID STORE uid +FLAGS.SILENT
 /// (\Answered)`). The only new IMAP code `reply` needs (REPLY-PLAN §6.2);
 /// idempotent by design (adding an already-set flag is a no-op).
-// used by cmd_reply (T7)
-#[allow(dead_code)]
 pub fn mark_answered(session: &mut Conn, folder: &str, uid: u32) -> Result<()> {
     session
         .select(folder)

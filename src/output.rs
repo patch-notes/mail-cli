@@ -6,6 +6,7 @@ use serde::Serialize;
 use crate::config::AccountInfo;
 use crate::imap::Folder;
 use crate::parse::{Attachment, Rendered, Summary};
+use crate::reply::ReplyReport;
 
 /// Print any serializable value as pretty JSON.
 pub fn json<T: Serialize>(value: &T) -> Result<()> {
@@ -78,6 +79,30 @@ pub fn read_human(r: &Rendered, index: Option<usize>) {
     }
     println!();
     println!("{}", r.body);
+}
+
+/// Render the reply report — the single end-of-run summary of what
+/// `reply` sent (REPLY-PLAN §5.4). Warnings were already printed to
+/// stderr as they happened; only the JSON form carries them alongside.
+pub fn reply_human(r: &ReplyReport, index: Option<usize>) {
+    match index {
+        Some(n) => println!(
+            "message sent (reply to uid:{} (#{n}) in {})",
+            r.uid, r.folder
+        ),
+        None => println!("message sent (reply to uid:{} in {})", r.uid, r.folder),
+    }
+    println!("To:      {}", r.to.join(", "));
+    if !r.cc.is_empty() {
+        println!("Cc:      {}", r.cc.join(", "));
+    }
+    println!("Subject: {}", r.subject);
+    if let Some(folder) = &r.saved_to {
+        println!("saved copy to {folder}");
+    }
+    if r.answered {
+        println!("marked uid:{} \\Answered", r.uid);
+    }
 }
 
 /// Render an attachment listing (`attachments`).

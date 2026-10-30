@@ -146,8 +146,6 @@ pub fn formatted(email: &Message) -> Vec<u8> {
 
 /// The bare address of the account (`MAILCLI_EMAIL`), for "me" matching in
 /// `reply`. A display-name value (`"Name <a@b>"`) yields `a@b`.
-// used by cmd_reply (T7)
-#[allow(dead_code)]
 pub fn account_address(cfg: &SmtpConfig) -> Result<String> {
     Ok(mailbox(&cfg.email)?.email.to_string())
 }
@@ -155,8 +153,6 @@ pub fn account_address(cfg: &SmtpConfig) -> Result<String> {
 /// Render one recipient as the display string `Outgoing` takes:
 /// `Name <a@b>` (the name quoted as needed) via lettre's own `Mailbox`
 /// `Display`, so `smtp::mailbox` parses it back losslessly.
-// used by cmd_reply (T7)
-#[allow(dead_code)]
 pub fn mailbox_string(name: Option<&str>, email: &str) -> Result<String> {
     let address = email
         .parse()
@@ -165,8 +161,6 @@ pub fn mailbox_string(name: Option<&str>, email: &str) -> Result<String> {
 }
 
 /// The client-side Message-ID (`"<id>"`) of a built message, if any.
-// used by cmd_reply (T7)
-#[allow(dead_code)]
 pub fn message_id(email: &Message) -> Option<String> {
     email
         .headers()

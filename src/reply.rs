@@ -16,8 +16,6 @@ use serde::Serialize;
 /// Every combination is RFC-legal: if the parent has no Message-ID, there's no
 /// `In-Reply-To`, but `References` may still carry the parent's own
 /// `References`.
-// used by cmd_reply (T7)
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Threading {
     /// `"<id>"` of the parent, or `None` (parent had no Message-ID).
@@ -29,8 +27,6 @@ pub struct Threading {
 
 /// What `reply` did. Built after all side effects; the single thing rendered
 /// (`output::reply_human` / `--json`).
-// used by cmd_reply (T7)
-#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 pub struct ReplyReport {
     /// Folder the parent lived in.

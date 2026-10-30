@@ -71,8 +71,6 @@ pub struct Original {
     pub to: Vec<Addr>,
     pub cc: Vec<Addr>,
     /// Raw Subject, `""` if absent (NOT `"(no subject)"`).
-    // used by cmd_reply (T7)
-    #[allow(dead_code)]
     pub subject: String,
     /// `DateTime::to_rfc822()`, e.g. `"Sat, 20 Nov 2021 14:22:01 -0800"`.
     pub date: Option<String>,
@@ -191,8 +189,6 @@ fn text_body(msg: &Message<'_>) -> String {
 }
 
 /// Parse a parent message once into what `reply` derives from (REPLY-PLAN §4.1).
-// used by cmd_reply (T7)
-#[allow(dead_code)]
 pub fn original(raw: &[u8]) -> Result<Original> {
     let msg = parse(raw)?;
     let ids = |v: &mail_parser::HeaderValue<'_>| -> Vec<String> {
