@@ -122,6 +122,32 @@ fn message_id_of(raw: &[u8]) -> Option<String> {
         .map(|value| value.trim().to_string())
 }
 
+/// The unfolded value of the first `name:` header in the raw bytes
+/// (continuation lines joined with a single space, per RFC 5322 §2.2.3),
+/// if present. Header folding is an RFC-equivalent transport artifact, so
+/// assertions compare the unfolded value, not the physical lines.
+fn header_value(raw: &[u8], name: &str) -> Option<String> {
+    let text = String::from_utf8_lossy(raw);
+    let prefix = format!("{name}:");
+    let mut lines = text.split("\r\n").take_while(|l| !l.is_empty()).peekable();
+    while let Some(line) = lines.next() {
+        if let Some(rest) = line.strip_prefix(&prefix) {
+            let mut value = rest.trim().to_string();
+            while let Some(next) = lines.peek() {
+                if next.starts_with(' ') || next.starts_with('\t') {
+                    value.push(' ');
+                    value.push_str(next.trim());
+                    lines.next();
+                } else {
+                    break;
+                }
+            }
+            return Some(value);
+        }
+    }
+    None
+}
+
 /// Full reply-all loop: seed a threaded parent in `me`'s INBOX, derive the
 /// reply with mail-cli's real pure rules, build it with the real builder,
 /// deliver it, file the Sent copy, mark the parent \Answered — then assert
@@ -238,17 +264,20 @@ fn reply_all_lands_threaded_in_sent_parent_answered() {
         alice_text.contains(&format!("In-Reply-To: <{orig_id}>")),
         "the delivered reply must carry In-Reply-To: {alice_text}"
     );
-    assert!(
-        alice_text.contains(&format!("References: <{root_id}> <{orig_id}>")),
-        "the delivered reply must carry References: root, then parent: {alice_text}"
+    assert_eq!(
+        header_value(&alice_raw, "References").as_deref(),
+        Some(format!("<{root_id}> <{orig_id}>").as_str()),
+        "the delivered reply must carry References (unfolded): root, then parent: {alice_text}"
     );
     assert!(
         alice_text.contains("> Original line one."),
         "the quoted parent line must be in the body: {alice_text}"
     );
     assert!(
-        alice_text.contains(&format!("To: Alice <{alice}>")),
-        "alice must be in To: {alice_text}"
+        header_value(&alice_raw, "To")
+            .map(|v| v.contains(&format!("Alice <{alice}>")))
+            .unwrap_or(false),
+        "alice must be in To (unfolded): {alice_text}"
     );
 
     // carol: got it via Cc.
