@@ -86,6 +86,31 @@ writes untouched RFC822 **bytes to stdout** and ignores `--json`.
 - `has_password` is a **boolean presence flag** — the password value is never
   emitted. Accounts sort `default` first, then numeric ascending, then lexical.
 
+### `reply` — the derived-reply report
+```json
+{
+  "folder": "INBOX",
+  "uid": 4821,
+  "message_id": "<9f0c…@laptop>",
+  "to": ["Alice <alice@example.com>"],
+  "cc": ["carol@example.com"],
+  "bcc": [],
+  "subject": "Re: Quarterly numbers",
+  "in_reply_to": "<orig-123@example.com>",
+  "references": ["<root-1@example.com>", "<orig-123@example.com>"],
+  "saved_to": "Sent",
+  "answered": true
+}
+```
+- `message_id` is the bracketed id the reply was sent under; the Sent copy
+  carries the same one. Ids in `in_reply_to`/`references` are bracketed exactly
+  as sent.
+- `in_reply_to` is `null` when the parent had no `Message-ID`; `references` is
+  `[]` when the parent had no thread history to inherit.
+- `saved_to` is the Sent folder name, or `null` if the copy was skipped
+  (`--no-save-sent`, IMAP absent, or `MAILCLI_SAVE_SENT=0`) or the `APPEND`
+  failed. `answered` reflects the parent's `\Answered` flag, not send success.
+
 ## Accounts (multi-account)
 
 Configure several accounts by suffixing their `MAILCLI_*` vars (`_1`, `_2`, …)
@@ -197,6 +222,16 @@ The binary fails loud and exits non-zero, printing `error: …`:
 - **`download` without `--attachment`/`--all`** → `specify --attachment K or --all`.
 - **Selector out of range** → `no message #N in <folder> (only M present)`.
 - **`send` without `--to`** → `at least one --to recipient is required`.
+- **`reply` with no recipient** (e.g. replying to a note to self) →
+  `no one to reply to: the original's Reply-To/From/To are only you
+  (MAILCLI_EMAIL); pass --to ADDR` — before any send, so no double-send risk.
+- **`reply --html` without `--no-quote`** → clap rejects the pair with a
+  message naming `--no-quote`, before any env read or network call (quoting
+  is plain text; `> ` lines in an HTML body would be wrong).
+- **Unparseable address in the parent's headers** (e.g. `undisclosed-recipients:;`
+  in a `Reply-To`) → fails **before** the SMTP send via the recipient
+  conversion, naming the offending address (`invalid email address: …`); the
+  workarounds are `send` (losing threading) or a plain `--to/--cc/--bcc`.
 
 When you hit one of these, relay the exact message and the concrete fix; don't
 paper over it.
@@ -217,6 +252,10 @@ mail-cli download INBOX "uid:$uid" --attachment 1 --out ./invoices
 # Forward-ish: pull a body and re-send it
 mail-cli --json read INBOX "uid:$uid" | jq -r '.body' \
   | mail-cli send --to archive@me.com --subject "copy" --body-file -
+
+# Reply (reply-all) to a message found via search
+uid=$(mail-cli --json search --from alice | jq '.[0].uid')
+mail-cli reply INBOX "uid:$uid" --all --cc boss@example.com --body-file -
 ```
 
 ## Design invariants (don't fight these)
@@ -236,5 +275,10 @@ These are deliberate; work with them rather than around them:
   never fails the send — it warns and exits `0`, because the mail already went
   out and a retry would double-send. Disable with `--no-save-sent` /
   `MAILCLI_SAVE_SENT=0`; skipped with a `note:` if IMAP isn't configured.
+- **`reply` is `read` + `send` on one session.** It needs *both* IMAP and SMTP
+  env configured (unlike `send`, whose IMAP-only role is the best-effort Sent
+  copy — for `reply` the parent itself is fetched over IMAP). One IMAP session
+  covers fetch, delivery-follow-on APPEND, and `\Answered`; nothing is stored
+  between runs.
 - **`--raw` (RFC822) output is bytes on stdout.** Redirect to a file if you want
   to keep it; don't expect JSON.

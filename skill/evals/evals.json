@@ -48,6 +48,24 @@
       "prompt": "When I send mail with mail-cli it goes out fine but nothing shows up in my Sent folder. My server's sent mailbox is actually called 'Sent Items'. How do I make mail-cli save a copy there?",
       "expected_output": "Explains that `send` already saves a copy to Sent by default via IMAP APPEND (SMTP alone never files Sent), and that the folder name is configurable: pass `--sent-folder 'Sent Items'` or set `MAILCLI_SENT_FOLDER='Sent Items'`. Notes the save is best-effort (warns, exits 0, doesn't double-send) and needs IMAP env vars configured. Does not suggest a config file, BCC-to-self, or claim SMTP auto-files Sent.",
       "files": []
+    },
+    {
+      "id": 9,
+      "prompt": "Reply to the latest email from alice, saying I'll be there.",
+      "expected_output": "Uses `mail-cli --json search --from alice` (or `list --search`) to find the newest message, reads .[0].uid with jq, then `mail-cli reply INBOX uid:<UID> --body 'I'll be there'` (or `--body-file -`). Knows reply needs IMAP + SMTP env vars and the --body/--body-file choice. Never hand-crafts `send --subject 'Re: …'` (threading headers come from reply). Addresses the message by uid:, not row number.",
+      "files": []
+    },
+    {
+      "id": 10,
+      "prompt": "Reply-all to the budget thread and cc my boss, bob@acme.com.",
+      "expected_output": "Finds the thread's newest UID via `mail-cli --json search … | jq '.[0].uid'`, then runs `mail-cli reply INBOX uid:<UID> --all --cc bob@acme.com --body …`. Knows --all Cc's the original To + Cc minus the user (MAILCLI_EMAIL) and that --cc takes comma-separated addresses. Does not mail the user to themselves; does not invent a config file.",
+      "files": []
+    },
+    {
+      "id": 11,
+      "prompt": "Reply to that invoice message in HTML — the recipient's client renders HTML.",
+      "expected_output": "Finds the message UID, then runs `mail-cli reply INBOX uid:<UID> --html --no-quote --body '<p>…</p>'`. Knows --html requires --no-quote (clap rejects `--html` without `--no-quote`), and that the parent is quoted as text (top-posted) unless quoting is turned off. Never puts `> ` quoting inside an HTML body, and never substitutes `send`.",
+      "files": []
     }
   ]
 }

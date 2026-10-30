@@ -1,6 +1,6 @@
 ---
 name: mail-cli
-description: Drive the `mail-cli` tool — a stateless, env-configured IMAP/SMTP command-line email client written in Rust — to read, list, search, and send email from the terminal. Use this skill whenever the user wants to check/list their inbox, read a specific message, search mail by sender/subject/date/flags, download attachments, or compose and send an email through mail-cli. Trigger on requests like "check my email", "list my inbox", "find the invoice from alice", "read message 3", "download the attachment", "send an email to bob with this file attached", "search my mail for unread messages since Monday", or any task that runs the `mail-cli` binary. Also trigger when the user mentions MAILCLI_* environment variables, IMAP/SMTP from the CLI, or `uid:` message selectors.
+description: Drive the `mail-cli` tool — a stateless, env-configured IMAP/SMTP command-line email client written in Rust — to read, list, search, reply to, and send email from the terminal. Use this skill whenever the user wants to check/list their inbox, read a specific message, search mail by sender/subject/date/flags, download attachments, or compose and send an email through mail-cli, or reply (reply / reply-all) to a message. Trigger on requests like "check my email", "list my inbox", "find the invoice from alice", "read message 3", "download the attachment", "send an email to bob with this file attached", "reply to alice's email", "reply all and cc my boss", "search my mail for unread messages since Monday", or any task that runs the `mail-cli` binary. Also trigger when the user mentions MAILCLI_* environment variables, IMAP/SMTP from the CLI, or `uid:` message selectors.
 ---
 
 # mail-cli
@@ -28,9 +28,9 @@ given command needs are required; a missing one fails loud, naming the variable.
 
 | Variable | Needed for | Default | Meaning |
 |---|---|---|---|
-| `MAILCLI_IMAP_HOST` | read cmds | — | IMAP server host |
+| `MAILCLI_IMAP_HOST` | read cmds, `reply` | — | IMAP server host |
 | `MAILCLI_IMAP_PORT` | no | `993` | IMAP port |
-| `MAILCLI_SMTP_HOST` | `send` | — | SMTP server host |
+| `MAILCLI_SMTP_HOST` | `send`, `reply` | — | SMTP server host |
 | `MAILCLI_SMTP_PORT` | no | `465` | SMTP port |
 | `MAILCLI_EMAIL` | yes | — | Account address (From + default login user) |
 | `MAILCLI_USER` | no | `=EMAIL` | Login username, if different from the address |
@@ -80,9 +80,11 @@ mail-cli list --limit 5 --json        # also works (it's a global flag)
 `--json` is declared global, so clap accepts it on either side of the
 subcommand. Prefer putting it **before** the subcommand — that's the form shown
 throughout the docs and it reads unambiguously. It applies to the read commands
-(`accounts`, `folders`, `list`, `search`, `read`, `attachments`) and prints
-machine-readable output. Always use it when you're going to parse the result
-(e.g. piping to `jq`) rather than scraping the human table.
+(`accounts`, `folders`, `list`, `search`, `read`, `attachments`) and to `reply`,
+which is the case where it's most useful: the recipients, subject and
+threading headers are *derived* by the tool, and `--json` reports exactly what
+went out. Always use it when you're going to parse the result (e.g. piping to
+`jq`) rather than scraping the human table.
 
 ## Commands
 
@@ -178,6 +180,43 @@ mail-cli send --to a@x.com --subject S --body hi --sent-folder "Sent Items"
 mail-cli send --to a@x.com --subject S --body hi --no-save-sent
 ```
 
+### reply — answer a message, threaded
+
+```sh
+mail-cli reply INBOX uid:4821 --body "Thanks, will do."
+mail-cli reply INBOX uid:4821 --all --cc boss@example.com --body-file -
+```
+- `<FOLDER> <SELECTOR>` takes the same `N` (live index) / `uid:NNN` (stable)
+  shape as `read`. Unlike `send`, `reply` **needs both IMAP and SMTP**
+  configured: it fetches the parent over IMAP and reuses the `send` path, then
+  does two more IMAP steps on the same session.
+- **Who gets it.** By default, the parent's `Reply-To` (else `From`). `--all`
+  also Cc's the parent's `To` and `Cc`, minus you (`MAILCLI_EMAIL`), deduped and
+  case-insensitive. If the parent's `Reply-To`/`From` is *only you* (e.g.
+  replying to a message in your own Sent folder), the reply goes to the
+  parent's original `To` — it never mails you. Extra
+  `--to/--cc/--bcc` (comma-separated, verbatim) are appended to the computed
+  list. If no recipient remains and you pass no `--to`, it fails **before any
+  send** (`no one to reply to: … pass --to ADDR`).
+- **Subject.** Gets `Re: ` prefixed unless it already starts with `re:`
+  (case-insensitive), so threads never stack. `In-Reply-To`/`References` are
+  set from the parent's Message-ID/References so mail clients group it.
+- **Quoting.** The parent's text is quoted **under your body by default** —
+  `On <date>, <from> wrote:` plus `> `-prefixed lines, your text on top.
+  `--no-quote` disables it; the parent's HTML is quoted as the *text* `read`
+  shows. `--html` requires `--no-quote` (clap rejects the pair —
+  `> ` quoting inside an HTML body would be wrong).
+- **Side effects, same best-effort rule as `send`'s Sent copy.** After the SMTP
+  send, a copy is filed in the Sent folder and the parent is flagged
+  `\Answered`; a failure of either prints a `warning:` and the command still
+  exits `0` (a retry would double-send). `--sent-folder`/`--no-save-sent` and
+  `--attach`/`--body`/`--body-file` behave exactly as on `send`.
+- **`--json`** reports the actual reply: `folder`, `uid`, `message_id`,
+  `to`, `cc`, `bcc`, `subject`, `in_reply_to`, `references`, `saved_to`,
+  `answered`.
+- **Use `reply`, never `send --subject 'Re: …'`** — the hand-rolled variant
+  loses the threading headers.
+
 ## Recommended workflow for an agent
 
 1. **Confirm config.** Check the needed `MAILCLI_*` vars are set. If a read
@@ -189,6 +228,8 @@ mail-cli send --to a@x.com --subject S --body hi --no-save-sent
    This survives new mail arriving between steps.
 4. **For sending,** assemble the `send` invocation; use `--body-file -` when the
    body is long or comes from another step rather than cramming it into `--body`.
+5. **To answer a message**, find its `uid` (via `search`/`list --json`), then
+   `reply` — never hand-roll a `send` with a `Re:` subject.
 
 When you need exact JSON field names, the full env/provider notes, or edge-case
 behavior, read `references/reference.md`.
