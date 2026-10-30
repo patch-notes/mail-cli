@@ -559,6 +559,9 @@ fn cmd_send(
         body,
         html,
         attachments: attach,
+        // A new message has no parent: the legal empty threading state.
+        in_reply_to: None,
+        references: vec![],
     };
     let email = smtp::build(&cfg, &outgoing)?;
 

@@ -20,6 +20,10 @@ pub struct Outgoing {
     pub body: String,
     pub html: bool,
     pub attachments: Vec<PathBuf>,
+    /// `"<id>"` of the parent, or `None` (send, or parent had no Message-ID).
+    pub in_reply_to: Option<String>,
+    /// `"<id>"` list for References; empty = header omitted.
+    pub references: Vec<String>,
 }
 
 /// Parse a comma-or-single address into a lettre `Mailbox`.
@@ -72,6 +76,12 @@ pub fn build(cfg: &SmtpConfig, msg: &Outgoing) -> Result<Message> {
         .from(from)
         .subject(&msg.subject)
         .message_id(None);
+    if let Some(id) = &msg.in_reply_to {
+        builder = builder.in_reply_to(id.clone());
+    }
+    if !msg.references.is_empty() {
+        builder = builder.references(msg.references.join(" "));
+    }
     builder = add_recipients(builder, &msg.to, &msg.cc, &msg.bcc)?;
 
     let body_type = if msg.html {
@@ -134,6 +144,36 @@ pub fn formatted(email: &Message) -> Vec<u8> {
     email.formatted()
 }
 
+/// The bare address of the account (`MAILCLI_EMAIL`), for "me" matching in
+/// `reply`. A display-name value (`"Name <a@b>"`) yields `a@b`.
+// used by cmd_reply (T7)
+#[allow(dead_code)]
+pub fn account_address(cfg: &SmtpConfig) -> Result<String> {
+    Ok(mailbox(&cfg.email)?.email.to_string())
+}
+
+/// Render one recipient as the display string `Outgoing` takes:
+/// `Name <a@b>` (the name quoted as needed) via lettre's own `Mailbox`
+/// `Display`, so `smtp::mailbox` parses it back losslessly.
+// used by cmd_reply (T7)
+#[allow(dead_code)]
+pub fn mailbox_string(name: Option<&str>, email: &str) -> Result<String> {
+    let address = email
+        .parse()
+        .with_context(|| format!("invalid email address: {email:?}"))?;
+    Ok(Mailbox::new(name.map(str::to_owned), address).to_string())
+}
+
+/// The client-side Message-ID (`"<id>"`) of a built message, if any.
+// used by cmd_reply (T7)
+#[allow(dead_code)]
+pub fn message_id(email: &Message) -> Option<String> {
+    email
+        .headers()
+        .get_raw("Message-ID")
+        .map(|v| v.trim().to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -160,6 +200,8 @@ mod tests {
             body: "hello".to_string(),
             html: false,
             attachments: vec![],
+            in_reply_to: None,
+            references: vec![],
         }
     }
 
@@ -212,6 +254,182 @@ mod tests {
         assert_ne!(
             id_first, id_second,
             "two builds must produce distinct Message-IDs, both were {id_first:?}"
+        );
+    }
+
+    // ---- threading headers in build (REPLY-PLAN T1, §4.3, R4) ----
+
+    /// Unfolded header value (continuation lines joined) for `name`, if present.
+    fn header_value(raw: &[u8], name: &str) -> Option<String> {
+        let text = String::from_utf8_lossy(raw);
+        let prefix = format!("{name}:");
+        let mut lines = text.split("\r\n").take_while(|l| !l.is_empty()).peekable();
+        while let Some(line) = lines.next() {
+            if let Some(rest) = line.strip_prefix(&prefix) {
+                let mut value = rest.trim().to_string();
+                while let Some(next) = lines.peek() {
+                    if next.starts_with(' ') || next.starts_with('\t') {
+                        value.push(' ');
+                        value.push_str(next.trim());
+                        lines.next();
+                    } else {
+                        break;
+                    }
+                }
+                return Some(value);
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn build_emits_in_reply_to_and_references_when_set() {
+        let outgoing = Outgoing {
+            in_reply_to: Some("<orig@example.com>".to_string()),
+            references: vec![
+                "<root@example.com>".to_string(),
+                "<orig@example.com>".to_string(),
+            ],
+            ..test_outgoing()
+        };
+        let raw = formatted(&build(&test_cfg(), &outgoing).expect("smtp::build"));
+        assert_eq!(
+            header_value(&raw, "In-Reply-To").as_deref(),
+            Some("<orig@example.com>"),
+            "In-Reply-To must carry the bracketed parent id"
+        );
+        assert_eq!(
+            header_value(&raw, "References").as_deref(),
+            Some("<root@example.com> <orig@example.com>"),
+            "References must be the space-joined bracketed ids, in order"
+        );
+    }
+
+    #[test]
+    fn build_omits_threading_headers_for_a_plain_send() {
+        let raw = formatted(&build(&test_cfg(), &test_outgoing()).expect("smtp::build"));
+        assert_eq!(
+            header_value(&raw, "In-Reply-To"),
+            None,
+            "send has no parent"
+        );
+        assert_eq!(header_value(&raw, "References"), None, "send has no parent");
+    }
+
+    #[test]
+    fn build_emits_references_without_in_reply_to_when_parent_had_no_id() {
+        let outgoing = Outgoing {
+            in_reply_to: None,
+            references: vec!["<root@example.com>".to_string()],
+            ..test_outgoing()
+        };
+        let raw = formatted(&build(&test_cfg(), &outgoing).expect("smtp::build"));
+        assert_eq!(header_value(&raw, "In-Reply-To"), None);
+        assert_eq!(
+            header_value(&raw, "References").as_deref(),
+            Some("<root@example.com>")
+        );
+    }
+
+    /// R4 (REPLY-PLAN §8): 50 References ids must be folded; no physical line
+    /// may exceed the RFC 5322 hard limit of 998 bytes.
+    #[test]
+    fn build_folds_a_long_references_header_under_998_bytes() {
+        let refs: Vec<String> = (0..50)
+            .map(|i| format!("<ref-{i:02}-0123456789abcdef0123456789abcdef@example.com>"))
+            .collect();
+        let outgoing = Outgoing {
+            in_reply_to: refs.last().cloned(),
+            references: refs.clone(),
+            ..test_outgoing()
+        };
+        let raw = formatted(&build(&test_cfg(), &outgoing).expect("smtp::build"));
+        let text = String::from_utf8_lossy(&raw);
+        let longest = text.split("\r\n").map(str::len).max().unwrap_or(0);
+        assert!(
+            longest <= 998,
+            "no line may exceed 998 bytes; longest was {longest}"
+        );
+        assert_eq!(
+            header_value(&raw, "References").map(|v| v.split(' ').count()),
+            Some(50),
+            "all 50 ids must survive folding"
+        );
+    }
+
+    // ---- reply helpers (REPLY-PLAN T2, §6.2) ----
+
+    /// A display-name `MAILCLI_EMAIL` yields the bare address for "me" matching.
+    #[test]
+    fn account_address_strips_display_name() {
+        let cfg = SmtpConfig {
+            email: "Me <me@example.com>".to_string(),
+            ..test_cfg()
+        };
+        assert_eq!(
+            account_address(&cfg).expect("account_address"),
+            "me@example.com",
+            "account_address is the bare address of MAILCLI_EMAIL"
+        );
+    }
+
+    /// `mailbox_string` output must parse back into a `Mailbox` losslessly and
+    /// survive a real `build` (the round trip REPLY-PLAN §6.2 locks).
+    #[test]
+    fn mailbox_string_round_trips_through_mailbox_and_build() {
+        let s = mailbox_string(Some("Doe, John"), "john@example.com").expect("mailbox_string");
+        let mb: Mailbox = s
+            .parse()
+            .expect("mailbox_string output must parse back as a Mailbox");
+        assert_eq!(mb.email.to_string(), "john@example.com");
+        assert_eq!(mb.name.as_deref(), Some("Doe, John"));
+
+        let outgoing = Outgoing {
+            to: vec![s],
+            cc: vec![],
+            bcc: vec![],
+            subject: "S".to_string(),
+            body: "b".to_string(),
+            html: false,
+            attachments: vec![],
+            in_reply_to: None,
+            references: vec![],
+        };
+        let bytes = formatted(&build(&test_cfg(), &outgoing).expect("build"));
+        let raw = String::from_utf8_lossy(&bytes);
+        assert!(
+            raw.contains("john@example.com"),
+            "a built message must carry the recipient; got:\n{raw}"
+        );
+    }
+
+    /// Non-atom display names (commas, quotes, non-ASCII) must round-trip
+    /// through lettre's own quoting (REPLY-PLAN T2).
+    #[test]
+    fn mailbox_string_quotes_non_atom_names() {
+        for name in [Some("Doe, John"), Some("Zoë \"Z\""), None] {
+            let s = mailbox_string(name, "zoe@example.com").expect("mailbox_string");
+            let mb: Mailbox = s
+                .parse()
+                .expect("mailbox_string output must parse back as a Mailbox: {s:?}");
+            assert_eq!(mb.email.to_string(), "zoe@example.com", "for name {name:?}");
+            assert_eq!(mb.name.as_deref(), name, "for name {name:?}");
+        }
+    }
+
+    /// The Message-ID helper must return the bracketed id the builder emitted.
+    #[test]
+    fn message_id_helper_matches_formatted_bytes() {
+        let email = build(&test_cfg(), &test_outgoing()).expect("smtp::build");
+        let id = message_id(&email).expect("message_id");
+        assert!(
+            id.starts_with('<') && id.ends_with('>'),
+            "Message-ID must be angle-bracketed, got {id:?}"
+        );
+        let raw = formatted(&email);
+        assert!(
+            raw.windows(id.len()).any(|w| w == id.as_bytes()),
+            "the formatted bytes must carry the exact Message-ID the helper returns"
         );
     }
 }

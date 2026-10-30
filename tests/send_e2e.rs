@@ -122,6 +122,8 @@ fn send_then_message_lands_in_inbox_and_sent() {
         body: "hello from the mail-cli e2e".to_string(),
         html: false,
         attachments: vec![],
+        in_reply_to: None,
+        references: vec![],
     };
 
     // mail-cli's REAL message builder, and the REAL bytes it would put on the wire.
