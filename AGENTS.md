@@ -2,8 +2,9 @@
 
 `mail-cli` is a single-binary, **stateless** IMAP/SMTP email client in Rust.
 Config comes **only** from `MAILCLI_*` environment variables; everything else is
-a CLI flag. No config file, no cache, no stored state. Read [`PLAN.md`](PLAN.md)
-before non-trivial work — it is the locked source of truth.
+a CLI flag. No config file, no cache, no stored state. Read the relevant
+working plan under [`plans/`](plans/) before non-trivial work — the code is
+the locked source of truth.
 
 ## Project Structure & Module Organization
 
@@ -15,6 +16,7 @@ src/
   imap.rs    // the ONLY place that talks IMAP (connect/auth/list/fetch;
              //   append-to-Sent + \Sent special-use discovery)
   parse.rs   // mail-parser wrappers; Summary/Rendered/Attachment structs
+  reply.rs   // pure reply rules: recipients, subject, threading, quoting
   smtp.rs    // lettre message build (+attachments) and send
   skill.rs   // embeds skill/ assets; install-skill writes them to disk
   output.rs  // human tables + --json serialization
@@ -55,14 +57,21 @@ inside `imap.rs` so a future async swap stays contained.
 - Integration: GreenMail in Docker/podman, gated on `MAILCLI_IT=1`, and run on
   every PR by the `integration (GreenMail)` CI job. Covers the `search` query
   builder (`tests/search_integration.rs`), the save-to-Sent `APPEND`/`\Sent`
-  discovery paths (`tests/sent_integration.rs`), and a full send→INBOX+Sent e2e
-  loop (`tests/send_e2e.rs`) that drives mail-cli's real build/append code — only
+  discovery paths (`tests/sent_integration.rs`), a full send→INBOX+Sent e2e
+  loop (`tests/send_e2e.rs`), and a full reply→INBOX+Sent e2e loop
+  (`tests/reply_e2e.rs`) — both drive mail-cli's real build/append code; only
   the encrypted transport hop is substituted (SMTP TLS trusts bundled webpki
   roots, so it can't validate GreenMail's self-signed cert; IMAP TLS uses OS
   roots). GreenMail must bind `0.0.0.0` (`-Dgreenmail.hostname=0.0.0.0`) or
   podman/CI port-forwarding drops the connection. Run serialized
-  (`--test-threads=1`). The lib crate exposes `imap`/`smtp`/`config`/`parse` for
-  these tests.
+  (`--test-threads=1`). The lib crate exposes `imap`/`smtp`/`config`/`parse`/`reply`
+  for these tests.
+- **No-server CLI-validation tests** (`tests/reply_cli.rs`) run with a plain
+  `cargo test` (no GreenMail needed). They assert that `reply --help` advertises
+  every reply flag, that `--html` is rejected without `--no-quote`, and that
+  every missing-body/selector/env error fires *before* the deliberately dead
+  IMAP/SMTP connect — with a wrong validation order, a connection error would
+  fire instead and the tests would catch that.
 
 ## Commit & Pull Request Guidelines
 

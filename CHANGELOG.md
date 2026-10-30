@@ -6,7 +6,39 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-07-17
+### Added
+
+- **`reply` command** — threaded reply to one message. `reply <FOLDER>
+  <SELECTOR>` derives everything from the parent in a single IMAP session:
+  recipients (the parent's `Reply-To` else `From`; `--all` Cc's the parent
+  `To` + `Cc`, minus you; extra `--to/--cc/--bcc` appended verbatim; replying
+  to your own message targets the original `To`), the `Re: ` subject (prefix
+  only if not already `re:`, case-insensitive — threads never stack),
+  `In-Reply-To`/`References` headers for threading, and a quoted body by
+  default (top-posted under `On <date>, <from> wrote:`; `--no-quote` to
+  disable; `--html` requires `--no-quote`). After SMTP delivery it files a
+  copy in the Sent folder and marks the parent `\Answered` — both best-effort:
+  a failure prints a `warning:` and the command still exits `0` (a retry would
+  double-send). `--json` reports the derived recipients, subject, threading
+  headers, `saved_to`, and `answered`.
+- **`reply` e2e + CLI tests.** `tests/reply_e2e.rs` (GreenMail, `MAILCLI_IT=1`)
+  proves a reply-all lands threaded, quoted, in Sent, with the parent
+  `\Answered`; `tests/reply_cli.rs` (no server) validates help-text, the
+  `--html`/`--no-quote` constraint, and the fail-fast-before-connect ordering.
+  The `integration (GreenMail)` CI job now runs `reply_e2e` alongside the
+  existing GreenMail tests.
+
+### Fixed
+
+- `send` now validates `MAILCLI_SAVE_SENT` **before** the SMTP send. Previously
+  a bad value delivered the mail and then exited non-zero, inviting a retry
+  that double-sends. The check now fails the command before anything is sent;
+  post-delivery failures still only warn (same best-effort contract).
+- Outgoing mail (`send` and `reply`) now carries a client-generated
+  `Message-ID` (`<uuid@host>` via lettre's `.message_id(None)`). Previously the
+  built message had no Message-ID (only `Date` was auto-inserted) and the Sent
+  copy had none either; now delivered and stored copies share one id, and a
+  next reply in the thread can find its parent.
 
 ### Added
 

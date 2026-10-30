@@ -211,6 +211,34 @@ prints a `warning:` and still exits `0` (a non-zero exit would invite a retry
 that double-sends). Disable it with `--no-save-sent` or `MAILCLI_SAVE_SENT=0`.
 If IMAP isn't configured, saving is skipped with a one-line `note:`.
 
+### reply
+
+Threaded reply to one message, over a single IMAP session.
+
+```sh
+mail-cli reply INBOX uid:4821 --body "Thanks, will do."
+mail-cli reply INBOX uid:4821 --all --cc boss@example.com --body-file -
+```
+- Needs **both** IMAP and SMTP configured; the parent is fetched over IMAP from
+  `<FOLDER> <SELECTOR>` (the same `N`/`uid:NNN` shape as `read`).
+- **Recipients.** The parent's `Reply-To` (else `From`); `--all` also Cc's the
+  parent's `To` and `Cc`, minus you (`MAILCLI_EMAIL`); extra
+  `--to/--cc/--bcc` (comma-separated) are appended. Replying to a message
+  whose `Reply-To`/`From` is only you targets the original `To` (never
+  mails you). Fails **before sending** if the result is empty and no
+  `--to` was given.
+- **Subject & threading.** Gets `Re: ` prefixed unless it already starts with
+  `re:` (case-insensitive, so it never stacks); `In-Reply-To`/`References`
+  are set from the parent so the reply groups in mail clients.
+- **Quoting.** The parent's text is quoted under your body by default
+  (`On <date>, <from> wrote:` plus `> `-prefixed lines, your text on top);
+  `--no-quote` disables it. `--html` requires `--no-quote`.
+- **Side effects.** After the SMTP send, files a copy in the Sent folder and
+  flags the parent `\Answered` — both best-effort (same rule as `send`'s copy:
+  warns, exits `0`; `--sent-folder`/`--no-save-sent` available). `--json`
+  reports folder/uid/message_id/to/cc/bcc/subject/in_reply_to/references/
+  saved_to/answered — useful because those values are *derived* by the tool.
+
 ### install-skill
 Install the agent usage skill that ships **inside the binary** — no repo clone
 needed. It writes `SKILL.md` plus its `references/` and `evals/` to disk.
