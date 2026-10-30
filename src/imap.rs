@@ -182,6 +182,21 @@ pub fn discover_sent(session: &mut Conn) -> Option<String> {
         .map(|n| n.name().to_string())
 }
 
+/// Add `\Answered` to one message (SELECT + `UID STORE uid +FLAGS.SILENT
+/// (\Answered)`). The only new IMAP code `reply` needs (REPLY-PLAN §6.2);
+/// idempotent by design (adding an already-set flag is a no-op).
+// used by cmd_reply (T7)
+#[allow(dead_code)]
+pub fn mark_answered(session: &mut Conn, folder: &str, uid: u32) -> Result<()> {
+    session
+        .select(folder)
+        .with_context(|| format!("cannot select folder {folder:?}"))?;
+    session
+        .uid_store(uid.to_string(), "+FLAGS.SILENT (\\Answered)")
+        .with_context(|| format!("UID STORE failed for uid:{uid} in {folder}"))?;
+    Ok(())
+}
+
 /// Render IMAP flags to their canonical `\Seen`-style strings.
 fn format_flags(flags: &[Flag<'_>]) -> Vec<String> {
     flags
