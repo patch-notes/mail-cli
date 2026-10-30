@@ -9,6 +9,7 @@
 //!
 
 use crate::parse::{Addr, Original};
+use anyhow::{Result, bail};
 use serde::Serialize;
 
 /// Threading headers, angle-bracketed and ready for lettre.
@@ -86,6 +87,19 @@ pub fn recipients(o: &Original, me: &str, all: bool) -> (Vec<Addr>, Vec<Addr>) {
         Vec::new()
     };
     (to, cc)
+}
+
+/// A reply needs at least one recipient: the computed `To`, or an explicit
+/// `--to`. When both are empty (e.g. a note to self), this fails — before
+/// any network call — naming the fix (REPLY-PLAN §5.1).
+pub fn require_recipients(computed_to: &[Addr], extra_to: &[String]) -> Result<()> {
+    if computed_to.is_empty() && extra_to.is_empty() {
+        bail!(
+            "no one to reply to: the original's Reply-To/From/To are only you \
+             (MAILCLI_EMAIL); pass --to ADDR"
+        );
+    }
+    Ok(())
 }
 
 /// `Re:`-prefix a subject without stacking: `t = s.trim()`; if `t` starts
@@ -428,6 +442,38 @@ mod tests {
             "primary (Reply-To) is all me → own-message rule, target the parent's To"
         );
         assert!(cc.is_empty());
+    }
+
+    // ---------- require_recipients (REPLY-PLAN §5.1, §12.1 test 8) ----------
+
+    #[test]
+    fn require_recipients_bails_when_no_one_to_reply_to() {
+        let err = require_recipients(&[], &[]).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("no one to reply to"),
+            "the note-to-self case must name the problem; got: {msg}"
+        );
+        assert!(
+            msg.contains("--to"),
+            "the error must name the fix (--to); got: {msg}"
+        );
+    }
+
+    #[test]
+    fn require_recipients_accepts_computed_or_explicit_to() {
+        let alice = Addr {
+            name: None,
+            email: "alice@example.com".to_string(),
+        };
+        assert!(
+            require_recipients(&[alice], &[]).is_ok(),
+            "a computed To is enough"
+        );
+        assert!(
+            require_recipients(&[], &["boss@example.com".to_string()]).is_ok(),
+            "an explicit --to rescues an empty computed To"
+        );
     }
 
     // ---------- subject (REPLY-PLAN §5.1 "Subject") ----------
