@@ -199,3 +199,48 @@ fn binary_send_smtp_failure_is_fatal_and_new_flags_parse() {
         String::from_utf8_lossy(&out.stderr)
     );
 }
+
+/// R1 (REPLY-PLAN §8): an invalid `MAILCLI_SAVE_SENT` must be rejected during
+/// config validation BEFORE any network call. Today `cmd_send` checks it only
+/// after `smtp::send` succeeds, so a typo delivers the mail and then exits 1 —
+/// inviting a duplicate resend. This points SMTP at a dead port, so the buggy
+/// order shows up as an SMTP connection error instead of a config error.
+/// No server needed: validation (once fixed) happens before the connect.
+#[test]
+fn binary_send_rejects_invalid_save_sent_before_any_send() {
+    let bin = env!("CARGO_BIN_EXE_mail-cli");
+
+    // env_clear keeps this deterministic: only the vars we set are visible,
+    // exactly as a clean shell would run it.
+    let out = Command::new(bin)
+        .args([
+            "send",
+            "--to",
+            "someone@example.com",
+            "--subject",
+            "S",
+            "--body",
+            "hi",
+        ])
+        .env_clear()
+        .env("MAILCLI_SMTP_HOST", "127.0.0.1")
+        .env("MAILCLI_SMTP_PORT", "9") // discard port: connect refused/closed
+        .env("MAILCLI_EMAIL", "me@example.com")
+        .env("MAILCLI_PASSWORD", "pw")
+        .env("MAILCLI_SAVE_SENT", "maybe")
+        .output()
+        .expect("run mail-cli send");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !out.status.success(),
+        "send with an invalid MAILCLI_SAVE_SENT must fail; stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("MAILCLI_SAVE_SENT"),
+        "the error must name MAILCLI_SAVE_SENT (config validation before send); got: {stderr}"
+    );
+    assert!(
+        !stderr.contains("failed to send message via"),
+        "a config error must surface, not an SMTP connection error; got: {stderr}"
+    );
+}

@@ -548,6 +548,9 @@ fn cmd_send(
     }
     let body = resolve_body(body, body_file)?;
     let cfg = SmtpConfig::from_env(env)?;
+    // Validate SAVE_SENT before any network call: a typo in the var must fail
+    // here, not after delivery (a post-send failure invites a double-send).
+    let save = !no_save_sent && env.save_sent()?;
     let outgoing = smtp::Outgoing {
         to,
         cc,
@@ -566,7 +569,6 @@ fn cmd_send(
     // Secondary effect: file a copy in Sent. Best-effort — the mail is already
     // delivered, so nothing below may fail the command (a non-zero exit would
     // invite a retry, which double-sends). We warn and return Ok.
-    let save = !no_save_sent && env.save_sent()?;
     if save {
         save_to_sent(env, sent_folder, &smtp::formatted(&email));
     }
