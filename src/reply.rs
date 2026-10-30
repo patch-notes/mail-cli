@@ -117,10 +117,10 @@ pub fn threading(o: &Original) -> Threading {
         Vec::new()
     };
     let mut references = dedupe_ids(base);
-    if let Some(id) = &o.message_id {
-        if !references.iter().any(|r| r == id) {
-            references.push(id.clone());
-        }
+    if let Some(id) = &o.message_id
+        && !references.iter().any(|r| r == id)
+    {
+        references.push(id.clone());
     }
     Threading {
         in_reply_to,
