@@ -62,4 +62,4 @@ jobs:
       - name: Integration + e2e tests
         env:
           MAILCLI_IT: "1"
-        run: cargo test --locked --test search_integration --test sent_integration --test send_e2e -- --test-threads=1
+        run: cargo test --locked --test search_integration --test sent_integration --test send_e2e --test reply_e2e -- --test-threads=1
